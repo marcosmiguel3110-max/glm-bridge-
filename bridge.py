@@ -40,9 +40,11 @@ app = Flask(__name__)
 CORS(app)
 
 # Modelo y provider por defecto.
-# FORZAMOS Modelscope porque es el unico provider de g4f que NO inyecta su
-# propia identidad (SurfSense, Puter, etc. te hacen decir "soy ChatGPT").
-DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'Qwen/Qwen3-235B-A22B-Thinking-2507')
+# USAMOS gpt-4o-mini porque es lo que ESTA DISPONIBLE en g4f hoy y respeta
+# la identidad de Verbo AI (los filtros regex funcionan perfecto con este).
+# Los modelos Qwen3-235B y Qwen3-25B ya no estan disponibles en Modelscope
+# (caen con 404), pero los dejamos como fallback por si vuelven.
+DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'gpt-4o-mini')
 DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', 'Modelscope')
 
 # Inicializar cliente g4f
@@ -176,18 +178,34 @@ def strip_think_tags(texto):
 
 
 def llamar_g4f(messages, model, temperature, max_tokens):
-    """Llama al modelo via g4f, forzando Modelscope como provider."""
+    """Llama al modelo via g4f. Si el modelo tiene prefijo 'provider:', usa ese
+    provider sin forzar Modelscope. Sino, prueba Modelscope primero (que respeta
+    identidad) y luego fallbacks."""
     if not g4f_client:
         raise RuntimeError('g4f no esta disponible')
 
     # Reforzar identidad ANTES de mandar al modelo
     messages_reforzados = reforzar_identidad(messages)
 
-    # Lista de modelos a probar en orden: el pedido primero, luego fallbacks
+    # Si el modelo viene como "provider:model" (ej: "nvidia.com:qwen/qwen3.5-397b-a17b"),
+    # respetamos ese provider sin forzar Modelscope.
+    provider_desde_modelo = None
+    modelo_a_usar = model
+    if ':' in model and not model.startswith('http'):
+        partes = model.split(':', 1)
+        # Solo split si la parte izquierda parece un provider (sin espacios, corta)
+        if len(partes[0]) < 40 and ' ' not in partes[0]:
+            provider_desde_modelo = partes[0]
+            modelo_a_usar = partes[1]
+            log.info(f'Modelo con provider explicito: provider={provider_desde_modelo} | modelo={modelo_a_usar}')
+
+    # Lista de modelos a probar en orden
     modelos_disponibles = [
-        model,
-        'Qwen/Qwen3-235B-A22B-Thinking-2507',  # 235B Thinking (mas potente)
-        'Qwen/Qwen-3-25B-A22B-Thinking-2507',  # 25B Thinking (fallback mas liviano)
+        modelo_a_usar,
+        'gpt-4o-mini',                          # funciona, respeta identidad
+        'gpt-4o',                                # fallback (a veces dice "Copilot")
+        'Qwen/Qwen3-235B-A22B-Thinking-2507',  # 235B (si Modelscope lo reactiva)
+        'Qwen/Qwen-3-25B-A22B-Thinking-2507',  # 25B (idem)
     ]
     vistos = set()
     modelos_a_probar = []
@@ -196,12 +214,16 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelos_a_probar.append(m)
             vistos.add(m)
 
-    # Providers a probar en orden: Modelscope primero (no inyecta identidad),
-    # luego fallbacks si Modelscope se cae.
-    providers_a_probar = [DEFAULT_PROVIDER] if DEFAULT_PROVIDER else []
-    for p in ['Modelscope', 'HuggingChat', '']:  # '' = auto
-        if p not in providers_a_probar:
-            providers_a_probar.append(p)
+    # Providers a probar:
+    # - Si el modelo vino con provider explicito (ej: nvidia.com), usar SOLO ese
+    # - Sino, Modelscope primero (no inyecta identidad), luego fallbacks
+    if provider_desde_modelo:
+        providers_a_probar = [provider_desde_modelo]
+    else:
+        providers_a_probar = [DEFAULT_PROVIDER] if DEFAULT_PROVIDER else []
+        for p in ['Modelscope', 'HuggingChat', '']:  # '' = auto
+            if p not in providers_a_probar:
+                providers_a_probar.append(p)
 
     ultimo_error = None
     for modelo_actual in modelos_a_probar:
