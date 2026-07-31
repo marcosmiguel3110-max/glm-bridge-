@@ -221,12 +221,15 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     #     qwen-2.5-coder-32b, gpt-4.5, grok-3, kimi-k2, qwq-32b, gpt-oss-120b
     modelos_disponibles = [
         modelo_a_usar,
-        'deepseek-r1',                         # MAS POTENTE, razonamiento profundo (estilo o1)
-        'o3-mini',                              # razonamiento de OpenAI
-        'gpt-4o',                               # general potente
-        'deepseek-v3',                          # fallback rapido de deepseek
-        'gpt-4o-mini',                          # fallback clasico, rapido
-        'r1-1776',                              # variante de DeepSeek R1
+        'Qwen/Qwen3-Coder-30B-A3B-Instruct',        # especializado en código, candidato fuerte
+        'Qwen/Qwen3-Next-80B-A3B-Instruct',         # nuevo, generalista potente
+        'Qwen/Qwen3-235B-A22B-Instruct-2507',       # variante más nueva del 235B, puede que ande distinto al viejo
+        'Qwen/Qwen3-235B-A22B-Thinking-2507',       # variante thinking mas nueva
+        'Qwen/Qwen3-30B-A3B-Thinking-2507',
+        'Qwen/Qwen3-32B',
+        'deepseek-r1',                                # fallback confirmado funcionando
+        'deepseek-v3',
+        'gpt-4o-mini',
     ]
     vistos = set()
     modelos_a_probar = []
