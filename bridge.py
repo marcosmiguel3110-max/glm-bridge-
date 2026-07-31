@@ -244,15 +244,12 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     #   - El nombre correcto de provider para Ollama es simplemente 'Ollama'.
     modelos_disponibles = [
         modelo_a_usar,
-        'qwen-2.5-coder-32b',                  # CONFIRMADO en registro, especializado en codigo (Together/HuggingChat)
-        'llama-3.3-70b',                        # CONFIRMADO en registro (Together/HuggingChat/HuggingFace)
-        'deepseek-r1',                          # CONFIRMADO funcionando en vivo (31/07/2026)
-        'deepseek-v3',                           # CONFIRMADO en registro (Together)
-        'qwq-32b',                              # CONFIRMADO en registro, razonamiento (Together/HuggingChat)
-        'qwen-3-235b',                          # CONFIRMADO en registro -- OJO: nombre real es asi, no "Qwen/Qwen3-235B-A22B..."
-        'command-r-plus',                       # CONFIRMADO en registro (HuggingSpace/HuggingChat)
-        'gpt-4o-mini',                          # fallback clasico
-        'r1-1776',                              # variante de DeepSeek R1 via Perplexity
+        'deepseek-v4-pro',                          # nuevo candidato, probar con provider OllamaPro
+        'Qwen/Qwen3-Coder-30B-A3B-Instruct',
+        'Qwen/Qwen3-Next-80B-A3B-Instruct',
+        'deepseek-r1',
+        'deepseek-v3',
+        'gpt-4o-mini',
     ]
     vistos = set()
     modelos_a_probar = []
