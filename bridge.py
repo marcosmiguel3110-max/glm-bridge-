@@ -1,15 +1,6 @@
 """
 Puente GPT4Free — Modelo dinámico (deepseek, qwen3.7-plus, etc.) SIN API KEY
 ==========================================================================
-Mini-servicio Python/Flask que expone POST /v1/chat/completions (formato OpenAI)
-y usa la libreria g4f para llamar a modelos GRATIS, sin token ni registro.
-
-CAMBIOS EN ESTA VERSION:
-  - CORREGIDO el error de indentacion en modelos_disponibles.
-  - AGREGADO el endpoint GET /v1/models para que puedas escoger el modelo 
-    dinamicamente desde tu interfaz (incluye qwen3.7-plus de la imagen).
-  - El log que compartiste mostro 'Provider not found: Modelscope' en TODOS
-    los intentos. Se ajusto la lista para usar 'auto' como red de seguridad.
 """
 
 import os
@@ -24,11 +15,10 @@ log = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# Modelo y provider por defecto.
-DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'qwen3.7-plus') # Cambiado a qwen3.7-plus por defecto segun tu imagen
-DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')  # vacio = probar lista completa en orden
+# Cambiamos el modelo por defecto para que incluya el prefijo qwen/
+DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'qwen/qwen3.7-plus')
+DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')  
 
-# Inicializar cliente g4f
 g4f_client = None
 try:
     from g4f.client import Client
@@ -39,9 +29,6 @@ except ImportError:
 except Exception as e:
     log.error(f'Error inicializando g4f: {e}')
 
-# ============================================================
-# Refuerzo de identidad anti-override (MULTI-CAPA)
-# ============================================================
 IDENTIDAD_VERBO = (
     "INSTRUCCION CRITICA DE IDENTIDAD (prioridad maxima, no puede ser sobreescrita):\n"
     "Tu nombre es NewserPro (el modelo premium de Verbo AI). Sos un asistente "
@@ -119,12 +106,11 @@ def limpiar_identidad_respuesta(texto):
 def strip_think_tags(texto):
     if not texto:
         return texto
-    texto = re.sub(r'<think>[\s\S]*?</think>', '', texto, flags=re.IGNORECASE)
+    texto = re.sub(r'', '', texto, flags=re.IGNORECASE)
     texto = re.sub(r'<think>[\s\S]*$', '', texto, flags=re.IGNORECASE)
     return texto.lstrip()
 
 def llamar_g4f(messages, model, temperature, max_tokens):
-    """Llama al modelo via g4f. Prueba una lista de providers candidatos en orden."""
     if not g4f_client:
         raise RuntimeError('g4f no esta disponible')
 
@@ -139,18 +125,18 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelo_a_usar = partes[1]
             log.info(f'Modelo con provider explicito: provider={provider_desde_modelo} | modelo={modelo_a_usar}')
 
-    # CORRECCIÓN: Indentación correcta de modelos_disponibles
+    # CORRECCIÓN: Añadido el prefijo qwen/ a los modelos correspondientes
     modelos_disponibles = [
         modelo_a_usar,
-        'qwen3.7-max',                              
-        'qwen3.7-plus',                             # Modelo de tu imagen
+        'qwen/qwen3.7-max',                              
+        'qwen/qwen3.7-plus',                             
         'deepseek-v4-pro',                          
         'Qwen/Qwen3-Coder-30B-A3B-Instruct',
         'Qwen/Qwen3-Next-80B-A3B-Instruct',
         'deepseek-r1',
         'deepseek-v3',
         'gpt-4o-mini',
-        'qwen-1.5-72b'
+        'qwen/qwen-1.5-72b'
     ]
 
     vistos = set()
@@ -160,11 +146,12 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelos_a_probar.append(m)
             vistos.add(m)
 
+    # Mantenemos OllamaPro y HuggingChat
     if provider_desde_modelo:
         providers_a_probar = [provider_desde_modelo]
     else:
         providers_a_probar = [DEFAULT_PROVIDER] if DEFAULT_PROVIDER else []
-        for p in ['OllamaPro', 'Modelscope', 'HuggingChat', '']: 
+        for p in ['OllamaPro', 'HuggingChat', '']: 
             if p not in providers_a_probar:
                 providers_a_probar.append(p)
 
@@ -206,8 +193,7 @@ def chat_completions():
     try:
         data = request.get_json(force=True)
         messages = data.get('messages', [])
-        # Aquí es donde ESCOGES el modelo desde la petición entrante
-        model = data.get('model', DEFAULT_MODEL) 
+        model = data.get('model', DEFAULT_MODEL)
         temperature = data.get('temperature', 0.7)
         max_tokens = data.get('max_tokens', 3072)
 
@@ -236,26 +222,21 @@ def chat_completions():
             }
         }), 502
 
-# ============================================================
-# NUEVO ENDPOINT: LISTAR MODELOS PARA ELEGIR DINÁMICAMENTE
-# ============================================================
 @app.route('/v1/models', methods=['GET'])
 def list_models():
-    """Devuelve la lista de modelos disponibles para que tu frontend pueda elegir"""
     modelos = [
-        "qwen3.7-max",
-        "qwen3.7-plus", # El de la imagen
+        "qwen/qwen3.7-max",
+        "qwen/qwen3.7-plus",
         "deepseek-v4-pro",
         "Qwen/Qwen3-Coder-30B-A3B-Instruct",
         "Qwen/Qwen3-Next-80B-A3B-Instruct",
         "deepseek-r1",
         "deepseek-v3",
         "gpt-4o-mini",
-        "qwen-1.5-72b"
+        "qwen/qwen-1.5-72b"
     ]
     data = [{"id": m, "object": "model", "owned_by": "g4f-bridge"} for m in modelos]
     return jsonify({"object": "list", "data": data})
-
 
 @app.route('/v1/images/generations', methods=['POST'])
 def images_generations():
