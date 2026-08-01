@@ -36,8 +36,8 @@ if WEBSHARE_ENABLED and WEBSHARE_PROXY_HOST:
 else:
     log.info("[Webshare] Proxies deshabilitados (usando IP directa)")
 
-# Modelo por defecto
-DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'qwen/qwen3.7-plus')
+# Modelo por defecto (cambiado a modelo que funciona gratis)
+DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'deepseek-v3')
 DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 
 g4f_client = None
@@ -181,18 +181,18 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelo_a_usar = partes[1]
             log.info(f'Modelo con provider explicito: provider={provider_desde_modelo} | modelo={modelo_a_usar}')
 
-    # Lista de modelos disponibles
+    # Lista de modelos disponibles (glm-5.2 requiere suscripción Ollama, movido al final)
     modelos_disponibles = [
         modelo_a_usar,
-        'glm-5.2',                               # Modelo GLM nuevo
+        'deepseek-v3',
+        'deepseek-v4-pro',
+        'deepseek-r1',
         'qwen/qwen3.7-max',
         'qwen/qwen3.7-plus',
-        'deepseek-v4-pro',
         'Qwen/Qwen3-Coder-30B-A3B-Instruct',
-        'deepseek-r1',
-        'deepseek-v3',
         'gpt-4o-mini',
-        'qwen/qwen-1.5-72b'
+        'qwen/qwen-1.5-72b',
+        'glm-5.2',  # Requiere suscripción Ollama (error 403)
     ]
 
     vistos = set()
@@ -202,12 +202,12 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelos_a_probar.append(m)
             vistos.add(m)
 
-    # FORZAMOS PROVEEDORES: Ollama primero (para glm-5.2), luego auto
+    # FORZAMOS PROVEEDORES: auto primero (Ollama requiere suscripción para glm-5.2)
     if provider_desde_modelo:
         providers_a_probar = [provider_desde_modelo]
     else:
         providers_a_probar = [DEFAULT_PROVIDER] if DEFAULT_PROVIDER else []
-        for p in [g4f.Provider.Ollama, '']:  # Ollama primero, '' (auto) como respaldo
+        for p in ['', g4f.Provider.Ollama]:  # '' (auto) primero, Ollama como respaldo
             if p not in providers_a_probar:
                 providers_a_probar.append(p)
 
