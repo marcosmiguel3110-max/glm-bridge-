@@ -19,22 +19,19 @@ app = Flask(__name__)
 CORS(app)
 
 # ============================================================
-# CONFIGURACIÓN WEBSHARE PROXIES
+# CONFIGURACIÓN WEBSHARE PROXIES (DESHABILITADO TEMPORALMENTE)
 # ============================================================
-WEBSHARE_ENABLED = os.getenv('WEBSHARE_ENABLED', 'false').lower() == 'true'
+# Webshare proxies no son compatibles con g4f (curl_cffi)
+# Mantenemos la configuración para futuras implementaciones alternativas
+WEBSHARE_ENABLED = False  # Deshabilitado temporalmente por incompatibilidad con g4f
 WEBSHARE_PROXY_HOST = os.getenv('WEBSHARE_PROXY_HOST', '')
 WEBSHARE_PROXY_PORT = os.getenv('WEBSHARE_PROXY_PORT', '')
 WEBSHARE_PROXY_USER = os.getenv('WEBSHARE_PROXY_USER', '')
 WEBSHARE_PROXY_PASS = os.getenv('WEBSHARE_PROXY_PASS', '')
 
-# Lista de proxies Webshare (puedes agregar más separados por coma)
+# Lista de proxies Webshare (deshabilitado temporalmente)
 PROXY_LIST = []
-if WEBSHARE_ENABLED and WEBSHARE_PROXY_HOST:
-    proxy_url = f"http://{WEBSHARE_PROXY_USER}:{WEBSHARE_PROXY_PASS}@{WEBSHARE_PROXY_HOST}:{WEBSHARE_PROXY_PORT}"
-    PROXY_LIST.append(proxy_url)
-    log.info(f"[Webshare] Proxy configurado: {WEBSHARE_PROXY_HOST}:{WEBSHARE_PROXY_PORT}")
-else:
-    log.info("[Webshare] Proxies deshabilitados (usando IP directa)")
+log.info("[Webshare] Proxies deshabilitados temporalmente (incompatibilidad con g4f/curl_cffi)")
 
 # Modelo por defecto (cambiado a modelo que funciona gratis)
 DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'deepseek-v3')
