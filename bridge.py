@@ -24,18 +24,6 @@ g4f_client = None
 try:
     from g4f.client import Client
     g4f_client = Client()
-    
-    # OPTIMIZACIÓN: Ignorar OpenRouter globalmente para evitar el error de "Key limit exceeded"
-    try:
-        if hasattr(g4f, 'Provider') and hasattr(g4f.Provider, 'Best'):
-            g4f.Provider.Best.working_providers = [
-                p for p in g4f.Provider.Best.working_providers 
-                if p.__name__ != 'OpenRouter'
-            ]
-            log.info("OpenRouter eliminado de la lista de providers para evitar saturación.")
-    except Exception as e_ignore:
-        log.warning(f"No se pudo filtrar OpenRouter automáticamente: {e_ignore}")
-
     log.info(f'g4f inicializado | modelo: {DEFAULT_MODEL} | provider: {DEFAULT_PROVIDER}')
 except ImportError:
     log.error('g4f no instalado. Ejecuta: pip install -r requirements.txt')
@@ -159,12 +147,12 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelos_a_probar.append(m)
             vistos.add(m)
 
-    # OPTIMIZACIÓN: Quitamos OllamaPro porque daba error de "Not Found" y tardaba tiempo
+    # FORZAMOS PROVEEDORES: Blackbox y LMArena no usan OpenRouter ni tienen límites de API Key
     if provider_desde_modelo:
         providers_a_probar = [provider_desde_modelo]
     else:
         providers_a_probar = [DEFAULT_PROVIDER] if DEFAULT_PROVIDER else []
-        for p in ['', 'HuggingChat']:  # '' = auto (ignorando OpenRouter)
+        for p in [g4f.Provider.Blackbox, g4f.Provider.LMArena, '']:  # '' = auto (último recurso)
             if p not in providers_a_probar:
                 providers_a_probar.append(p)
 
@@ -172,7 +160,9 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     for modelo_actual in modelos_a_probar:
         for provider_actual in providers_a_probar:
             try:
-                log.info(f'Intentando modelo: {modelo_actual} | provider: {provider_actual or "auto"}')
+                provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
+                log.info(f'Intentando modelo: {modelo_actual} | provider: {provider_name}')
+                
                 kwargs = {
                     'model': modelo_actual,
                     'messages': messages_reforzados,
@@ -188,14 +178,15 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                 if content and content.strip():
                     content = strip_think_tags(content)
                     content = limpiar_identidad_respuesta(content)
-                    log.info(f'OK | modelo: {modelo_actual} | provider: {provider_actual or "auto"} | {len(content)} chars')
+                    log.info(f'OK | modelo: {modelo_actual} | provider: {provider_name} | {len(content)} chars')
                     return content, modelo_actual
                 else:
-                    ultimo_error = f'{modelo_actual}/{provider_actual or "auto"}: respuesta vacia'
+                    ultimo_error = f'{modelo_actual}/{provider_name}: respuesta vacia'
                     log.warning(ultimo_error)
             except Exception as e:
-                ultimo_error = f'{modelo_actual}/{provider_actual or "auto"}: {e}'
-                log.warning(f'Fallo modelo {modelo_actual} provider {provider_actual or "auto"}: {e}')
+                provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
+                ultimo_error = f'{modelo_actual}/{provider_name}: {e}'
+                log.warning(f'Fallo modelo {modelo_actual} provider {provider_name}: {e}')
                 continue
 
     raise RuntimeError(f'Todos los modelos/providers fallaron. Ultimo error: {ultimo_error}')
