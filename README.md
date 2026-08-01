@@ -3,13 +3,46 @@
 Puente Python/Flask que expone `POST /v1/chat/completions` (formato OpenAI) y llama a **gpt-4o-mini** gratis usando la librería `g4f` (https://github.com/xtekky/gpt4free). **No requiere token, no requiere registro, no requiere API key.**
 
 ## Modelo por defecto
-- **Modelo**: `gpt-4o-mini`
-- **Provider**: Modelscope (forzado) con fallback a HuggingChat y auto
+- **Modelo**: `glm-5.2`, `qwen/qwen3.7-plus`, `deepseek-v4-pro` (rotación automática)
+- **Provider**: Ollama (para glm-5.2) con fallback a auto
 - **Identidad**: Fuertemente reforzada — el modelo SIEMPRE se presenta como "NewserPro de Verbo AI"
-- **Fallbacks**: Si gpt-4o-mini falla, prueba gpt-4o, Qwen3-235B-Thinking, Qwen3-25B-Thinking
+- **Fallbacks**: Si el modelo principal falla, prueba automáticamente otros modelos disponibles
 
-## ¿Por qué gpt-4o-mini y no Qwen3-235B?
-Los modelos Qwen3-235B y Qwen3-25B dejaron de estar disponibles en Modelscope (caen con 404). gpt-4o-mini SÍ está disponible, responde rápido, y los filtros de identidad funcionan perfecto con él (siempre dice "NewserPro" en lugar de "ChatGPT").
+## Rotación de IPs con Webshare (Opcional)
+
+Para evitar límites de requests por IP (24h cooldown), puedes configurar **Webshare proxies**:
+
+1. **Crear cuenta gratis en Webshare** (https://www.webshare.io):
+   - 10 proxies gratis (1GB/mes)
+   - Sin tarjeta de crédito
+
+2. **Obtener credenciales del proxy**:
+   - Proxy Host
+   - Proxy Port
+   - Username
+   - Password
+
+3. **Configurar en Render**:
+   - Ve a tu servicio en Render → Environment
+   - Agrega estas variables:
+     ```
+     WEBSHARE_ENABLED=true
+     WEBSHARE_PROXY_HOST=your-proxy-host
+     WEBSHARE_PROXY_PORT=your-proxy-port
+     WEBSHARE_PROXY_USER=your-username
+     WEBSHARE_PROXY_PASS=your-password
+     ```
+
+4. **Verificar que funciona**:
+   ```bash
+   curl https://tu-bridge.onrender.com/health
+   ```
+   Debería mostrar `"webshare_enabled": true` y `"webshare_proxies_count": 1`
+
+**Beneficios:**
+- Rotación automática de IPs en cada request
+- Evita límites de 24h por IP
+- 80M+ IPs disponibles (plan de pago)
 
 ## Deploy en Render (5 minutos)
 

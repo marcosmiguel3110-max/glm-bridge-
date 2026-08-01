@@ -1,11 +1,13 @@
 """
 Puente GPT4Free — Modelo dinámico (glm-5.2, qwen, deepseek) SIN API KEY
+Con rotación de IPs vía Webshare proxies
 ==========================================================================
 """
 
 import os
 import re
 import logging
+import random
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import g4f
@@ -16,14 +18,43 @@ log = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
+# ============================================================
+# CONFIGURACIÓN WEBSHARE PROXIES
+# ============================================================
+WEBSHARE_ENABLED = os.getenv('WEBSHARE_ENABLED', 'false').lower() == 'true'
+WEBSHARE_PROXY_HOST = os.getenv('WEBSHARE_PROXY_HOST', '')
+WEBSHARE_PROXY_PORT = os.getenv('WEBSHARE_PROXY_PORT', '')
+WEBSHARE_PROXY_USER = os.getenv('WEBSHARE_PROXY_USER', '')
+WEBSHARE_PROXY_PASS = os.getenv('WEBSHARE_PROXY_PASS', '')
+
+# Lista de proxies Webshare (puedes agregar más separados por coma)
+PROXY_LIST = []
+if WEBSHARE_ENABLED and WEBSHARE_PROXY_HOST:
+    proxy_url = f"http://{WEBSHARE_PROXY_USER}:{WEBSHARE_PROXY_PASS}@{WEBSHARE_PROXY_HOST}:{WEBSHARE_PROXY_PORT}"
+    PROXY_LIST.append(proxy_url)
+    log.info(f"[Webshare] Proxy configurado: {WEBSHARE_PROXY_HOST}:{WEBSHARE_PROXY_PORT}")
+else:
+    log.info("[Webshare] Proxies deshabilitados (usando IP directa)")
+
 # Modelo por defecto
 DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'qwen/qwen3.7-plus')
-DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')  
+DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 
 g4f_client = None
 try:
     from g4f.client import Client
-    g4f_client = Client()
+    
+    # Configurar proxies si están disponibles
+    client_kwargs = {}
+    if PROXY_LIST:
+        # Usar el primer proxy por defecto, rotaremos en cada request
+        client_kwargs['proxies'] = {
+            'http': PROXY_LIST[0],
+            'https': PROXY_LIST[0]
+        }
+        log.info(f"[Webshare] Client g4f configurado con proxy")
+    
+    g4f_client = Client(**client_kwargs)
     
     # CONFIGURACIÓN DE OLLAMA: Le inyectamos servidores públicos gratuitos para no usar API Key
     try:
@@ -38,7 +69,7 @@ try:
     except Exception as e_ollama:
         log.warning(f"No se pudo configurar Ollama: {e_ollama}")
 
-    log.info(f'g4f inicializado | modelo: {DEFAULT_MODEL} | provider: {DEFAULT_PROVIDER}')
+    log.info(f'g4f inicializado | modelo: {DEFAULT_MODEL} | provider: {DEFAULT_PROVIDER} | webshare: {WEBSHARE_ENABLED}')
 except ImportError:
     log.error('g4f no instalado. Ejecuta: pip install -r requirements.txt')
 except Exception as e:
@@ -127,6 +158,14 @@ def strip_think_tags(texto):
     texto = re.sub(r'<think>[\s\S]*$', '', texto, flags=re.IGNORECASE)
     return texto.lstrip()
 
+def obtener_proxy_rotativo():
+    """Obtiene un proxy aleatorio de la lista para rotación de IPs"""
+    if PROXY_LIST:
+        proxy = random.choice(PROXY_LIST)
+        log.info(f"[Webshare] Usando proxy rotativo: {proxy[:30]}...")
+        return {'http': proxy, 'https': proxy}
+    return None
+
 def llamar_g4f(messages, model, temperature, max_tokens):
     if not g4f_client:
         raise RuntimeError('g4f no esta disponible')
@@ -146,9 +185,9 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     modelos_disponibles = [
         modelo_a_usar,
         'glm-5.2',                               # Modelo GLM nuevo
-        'qwen/qwen3.7-max',                              
-        'qwen/qwen3.7-plus',                             
-        'deepseek-v4-pro',                          
+        'qwen/qwen3.7-max',
+        'qwen/qwen3.7-plus',
+        'deepseek-v4-pro',
         'Qwen/Qwen3-Coder-30B-A3B-Instruct',
         'deepseek-r1',
         'deepseek-v3',
@@ -177,7 +216,11 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         for provider_actual in providers_a_probar:
             try:
                 provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
-                log.info(f'Intentando modelo: {modelo_actual} | provider: {provider_name}')
+                
+                # Rotar proxy en cada request si Webshare está habilitado
+                proxy_config = obtener_proxy_rotativo()
+                
+                log.info(f'Intentando modelo: {modelo_actual} | provider: {provider_name} | proxy: {"si" if proxy_config else "no"}')
                 
                 kwargs = {
                     'model': modelo_actual,
@@ -187,6 +230,8 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                 }
                 if provider_actual:
                     kwargs['provider'] = provider_actual
+                if proxy_config:
+                    kwargs['proxies'] = proxy_config
 
                 response = g4f_client.chat.completions.create(**kwargs)
                 content = response.choices[0].message.content
@@ -341,6 +386,8 @@ def health():
         'model_default': DEFAULT_MODEL,
         'provider': DEFAULT_PROVIDER or 'auto',
         'g4f_available': g4f_client is not None,
+        'webshare_enabled': WEBSHARE_ENABLED,
+        'webshare_proxies_count': len(PROXY_LIST),
         'endpoints': {
             'chat': '/v1/chat/completions (POST, enviar "model" en el body para elegir)',
             'models': '/v1/models (GET, lista de modelos disponibles)',

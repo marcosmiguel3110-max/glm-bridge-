@@ -2,3 +2,4 @@ flask
 flask-cors
 g4f
 curl_cffi
+requests
