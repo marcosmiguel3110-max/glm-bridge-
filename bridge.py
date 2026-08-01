@@ -265,11 +265,27 @@ def llamar_g4f(messages, model, temperature, max_tokens):
 @app.route('/v1/chat/completions', methods=['POST'])
 def chat_completions():
     try:
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({
+                'error': {
+                    'message': 'JSON body is required',
+                    'type': 'invalid_request'
+                }
+            }), 400
+        
         messages = data.get('messages', [])
         model = data.get('model', DEFAULT_MODEL)
         temperature = data.get('temperature', 0.7)
         max_tokens = data.get('max_tokens', 3072)
+
+        if not messages:
+            return jsonify({
+                'error': {
+                    'message': 'messages field is required',
+                    'type': 'invalid_request'
+                }
+            }), 400
 
         log.info(f'POST /v1/chat/completions | model pedido={model} | messages={len(messages)}')
 
