@@ -214,41 +214,50 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     ultimo_error = None
     for modelo_actual in modelos_a_probar:
         for provider_actual in providers_a_probar:
-            try:
-                provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
-                
-                # Rotar proxy en cada request si Webshare está habilitado
-                proxy_config = obtener_proxy_rotativo()
-                
-                log.info(f'Intentando modelo: {modelo_actual} | provider: {provider_name} | proxy: {"si" if proxy_config else "no"}')
-                
-                kwargs = {
-                    'model': modelo_actual,
-                    'messages': messages_reforzados,
-                    'temperature': temperature,
-                    'max_tokens': max_tokens,
-                }
-                if provider_actual:
-                    kwargs['provider'] = provider_actual
-                if proxy_config:
-                    kwargs['proxies'] = proxy_config
+            # Intentar primero con proxy si está disponible
+            for usar_proxy in [True, False] if PROXY_LIST else [False]:
+                try:
+                    provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
+                    
+                    # Solo usar proxy si Webshare está habilitado y es el primer intento
+                    proxy_config = obtener_proxy_rotativo() if (usar_proxy and PROXY_LIST) else None
+                    
+                    log.info(f'Intentando modelo: {modelo_actual} | provider: {provider_name} | proxy: {"si" if proxy_config else "no"}')
+                    
+                    kwargs = {
+                        'model': modelo_actual,
+                        'messages': messages_reforzados,
+                        'temperature': temperature,
+                        'max_tokens': max_tokens,
+                    }
+                    if provider_actual:
+                        kwargs['provider'] = provider_actual
+                    if proxy_config:
+                        kwargs['proxies'] = proxy_config
 
-                response = g4f_client.chat.completions.create(**kwargs)
-                content = response.choices[0].message.content
+                    response = g4f_client.chat.completions.create(**kwargs)
+                    content = response.choices[0].message.content
 
-                if content and content.strip():
-                    content = strip_think_tags(content)
-                    content = limpiar_identidad_respuesta(content)
-                    log.info(f'OK | modelo: {modelo_actual} | provider: {provider_name} | {len(content)} chars')
-                    return content, modelo_actual
-                else:
-                    ultimo_error = f'{modelo_actual}/{provider_name}: respuesta vacia'
-                    log.warning(ultimo_error)
-            except Exception as e:
-                provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
-                ultimo_error = f'{modelo_actual}/{provider_name}: {e}'
-                log.warning(f'Fallo modelo {modelo_actual} provider {provider_name}: {e}')
-                continue
+                    if content and content.strip():
+                        content = strip_think_tags(content)
+                        content = limpiar_identidad_respuesta(content)
+                        log.info(f'OK | modelo: {modelo_actual} | provider: {provider_name} | proxy: {"si" if proxy_config else "no"} | {len(content)} chars')
+                        return content, modelo_actual
+                    else:
+                        ultimo_error = f'{modelo_actual}/{provider_name}: respuesta vacia'
+                        log.warning(ultimo_error)
+                        break  # Si respuesta vacía, no reintentar sin proxy
+                except Exception as e:
+                    provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
+                    error_msg = f'{modelo_actual}/{provider_name}: {e}'
+                    
+                    if usar_proxy and PROXY_LIST:
+                        log.warning(f'Fallo con proxy, reintentando sin proxy: {error_msg}')
+                        continue  # Reintentar sin proxy
+                    else:
+                        ultimo_error = error_msg
+                        log.warning(f'Fallo modelo {modelo_actual} provider {provider_name}: {e}')
+                        break  # Pasar al siguiente modelo/provider
 
     raise RuntimeError(f'Todos los modelos/providers fallaron. Ultimo error: {ultimo_error}')
 
