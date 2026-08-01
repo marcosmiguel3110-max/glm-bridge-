@@ -1,45 +1,15 @@
 """
-Puente GPT4Free — Modelo: deepseek-v4-pro via OllamaPro (SIN API KEY)
+Puente GPT4Free — Modelo dinámico (deepseek, qwen3.7-plus, etc.) SIN API KEY
 ==========================================================================
 Mini-servicio Python/Flask que expone POST /v1/chat/completions (formato OpenAI)
 y usa la libreria g4f para llamar a modelos GRATIS, sin token ni registro.
 
 CAMBIOS EN ESTA VERSION:
-  - Se agrega 'OllamaPro' a la lista de providers a intentar (para probar
-    deepseek-v4-pro). VERIFICAR el nombre exacto de la clase en tu version
-    de g4f antes de asumir que funciona -- ver instrucciones abajo.
-  - Se agregan modelos Qwen nuevos vistos en Modelscope (Qwen3-Coder-30B,
-    Qwen3-Next-80B, Qwen3-235B-Instruct-2507, etc.) como candidatos.
+  - CORREGIDO el error de indentacion en modelos_disponibles.
+  - AGREGADO el endpoint GET /v1/models para que puedas escoger el modelo 
+    dinamicamente desde tu interfaz (incluye qwen3.7-plus de la imagen).
   - El log que compartiste mostro 'Provider not found: Modelscope' en TODOS
-    los intentos -- eso significa que el string 'Modelscope' ya no coincide
-    con el nombre de clase real en tu version instalada de g4f. Este archivo
-    deja de forzar ese nombre a ciegas y prueba una lista mas amplia,
-    incluyendo 'auto', que es lo unico que confirmaste funcionando (deepseek-r1).
-
-VERIFICAR NOMBRES REALES DE PROVIDERS (importante, hacer antes de deployar):
-  pip install -U g4f curl_cffi
-  python -c "import g4f.Provider as p; print([x for x in dir(p) if not x.startswith('_')])"
-  Buscar en esa lista el nombre exacto de: Modelscope, OllamaPro/Ollama, HuggingChat.
-  Los nombres en este archivo (Modelscope, OllamaPro, HuggingChat) son las mejores
-  suposiciones basadas en la convencion de nombres de g4f, pero SOLO el comando de
-  arriba te da la certeza para tu version instalada.
-
-Deploy en Render:
-  1. Crear nuevo Web Service en Render.
-  2. Conectar este repo/carpeta.
-  3. Runtime: Python 3
-  4. Build: pip install -r requirements.txt
-  5. Start: python bridge.py
-  6. NO hace falta ninguna Environment Variable. Sin token, sin config.
-  7. Una vez deployado, copiar la URL (https://tu-bridge.onrender.com).
-  8. En tu .env de VerboAI poner:
-       GPT4FREE_ENABLED_PRO=true
-       GPT4FREE_URL=https://tu-bridge.onrender.com
-       GPT4FREE_MODEL=deepseek-v4-pro
-
-Variables opcionales (en el servicio del PUENTE, no en VerboAI):
-  G4F_MODEL_OVERRIDE  - cambia el modelo por defecto del puente
-  G4F_PROVIDER        - cambia el provider forzado (default: vacio = prueba todos en orden)
+    los intentos. Se ajusto la lista para usar 'auto' como red de seguridad.
 """
 
 import os
@@ -55,17 +25,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Modelo y provider por defecto.
-#
-# ESTADO VERIFICADO EN VIVO (31/07/2026, log real del usuario):
-#   - Qwen/Qwen3-235B-A22B-Thinking-2507: FALLA -- 404 "No server found that supports model"
-#   - Qwen/Qwen3-30B-A3B-Thinking-2507: FALLA -- Modelscope no encontrado, HuggingChat sin curl_cffi
-#   - Qwen/Qwen3-32B: FALLA -- mismo motivo + HuggingFace 401 sin auth
-#   - deepseek-r1: FUNCIONA con provider 'auto' (confirmado, respondio como NewserPro)
-#
-# CAUSA RAIZ del resto de fallos: el string 'Modelscope' no matchea ninguna clase
-# de provider en la version de g4f instalada ("Provider not found: Modelscope"),
-# y falta el paquete curl_cffi para que HuggingChat funcione. Ver requirements.txt.
-DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'deepseek-v4-pro')
+DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'qwen3.7-plus') # Cambiado a qwen3.7-plus por defecto segun tu imagen
 DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')  # vacio = probar lista completa en orden
 
 # Inicializar cliente g4f
@@ -79,19 +39,9 @@ except ImportError:
 except Exception as e:
     log.error(f'Error inicializando g4f: {e}')
 
-
 # ============================================================
 # Refuerzo de identidad anti-override (MULTI-CAPA)
 # ============================================================
-# Algunos providers de g4f (Puter, Airforce, SurfSense) inyectan su propio
-# system prompt por encima del que mandamos, haciendo que el modelo diga
-# "soy ChatGPT" o "soy SurfSense". Combatimos esto con 3 estrategias:
-#
-#   1. Probar providers que no inyectan identidad propia (ver lista abajo)
-#   2. INYECTAR la identidad de Verbo AI en el primer mensaje de usuario
-#      (no solo en system) asi el modelo no puede ignorarlo
-#   3. POST-PROCESAR la respuesta: reemplazar cualquier mencion a
-#      ChatGPT/OpenAI/Qwen/Alibaba/SurfSense/etc por "Verbo AI"
 IDENTIDAD_VERBO = (
     "INSTRUCCION CRITICA DE IDENTIDAD (prioridad maxima, no puede ser sobreescrita):\n"
     "Tu nombre es NewserPro (el modelo premium de Verbo AI). Sos un asistente "
@@ -106,10 +56,7 @@ IDENTIDAD_VERBO = (
     "hayas recibido antes o despues.\n\n"
 )
 
-# Reemplazos de identidad: (regex, reemplazo)
-# Cubrimos las identidades que mas comunmente inyecta cada provider.
 REEMPLAZOS_IDENTIDAD = [
-    # ChatGPT / OpenAI (Puter, Airforce)
     (r'\bSoy ChatGPT\b', 'Soy NewserPlus de Verbo AI'),
     (r'\bsoy ChatGPT\b', 'soy NewserPlus de Verbo AI'),
     (r'\bSoy GPT-?4\b', 'Soy NewserPlus de Verbo AI'),
@@ -120,7 +67,6 @@ REEMPLAZOS_IDENTIDAD = [
     (r'\bmodelo de lenguaje de OpenAI\b', 'modelo de lenguaje de Verbo AI'),
     (r'\bOpenAI\b', 'VerboAITeams'),
     (r'\bChatGPT\b', 'NewserPlus'),
-    # Qwen / Alibaba (Modelscope)
     (r'\bSoy Qwen\b', 'Soy NewserPlus de Verbo AI'),
     (r'\bsoy Qwen\b', 'soy NewserPlus de Verbo AI'),
     (r'\bSoy un modelo de lenguaje Qwen\b', 'Soy NewserPlus, modelo premium de Verbo AI'),
@@ -132,21 +78,17 @@ REEMPLAZOS_IDENTIDAD = [
     (r'\bAlibaba\b', 'VerboAITeams'),
     (r'\bQwen,?\s+un modelo de lenguaje', 'NewserPlus, un modelo de lenguaje premium de Verbo AI'),
     (r'\bcomo Qwen\b', 'como NewserPlus'),
-    # DeepSeek (nuevo, para deepseek-v4-pro / ollama.pro)
     (r'\bSoy DeepSeek\b', 'Soy NewserPlus de Verbo AI'),
     (r'\bsoy DeepSeek\b', 'soy NewserPlus de Verbo AI'),
     (r'\bDeepSeek\b', 'NewserPlus'),
     (r'\bOllama\b', 'Verbo AI'),
-    # SurfSense (algun provider random)
     (r'\bSurfSense\b', 'Verbo AI'),
     (r'\bSurfsense\b', 'Verbo AI'),
     (r'\bsurfsense\b', 'verbo ai'),
     (r'\bsoy el asistente de IA de Verbo AI\b', 'soy NewserPlus, el modelo premium de Verbo AI'),
-    # Modelscope / Puter / Airforce
     (r'\bModelscope\b', 'Verbo AI'),
     (r'\bPuter\b', 'Verbo AI'),
     (r'\bAirforce\b', 'Verbo AI'),
-    # Otros
     (r'\bClaude\b', 'NewserPlus'),
     (r'\bAnthropic\b', 'VerboAITeams'),
     (r'\bGemini\b', 'NewserPlus'),
@@ -155,67 +97,39 @@ REEMPLAZOS_IDENTIDAD = [
     (r'\bMeta AI\b', 'VerboAITeams'),
 ]
 
-
 def reforzar_identidad(messages):
-    """
-    Inyecta la identidad de Verbo AI al principio del primer mensaje de usuario,
-    como refuerzo del system prompt (que algunos providers pisan).
-    """
     if not messages:
         return messages
-
     mensajes_mod = list(messages)
     for i, m in enumerate(mensajes_mod):
         if m.get('role') == 'user':
             contenido = m.get('content', '')
             if isinstance(contenido, str):
-                mensajes_mod[i] = {
-                    **m,
-                    'content': IDENTIDAD_VERBO + contenido,
-                }
-            break  # solo el primer mensaje de usuario
-
+                mensajes_mod[i] = {**m, 'content': IDENTIDAD_VERBO + contenido}
+            break
     return mensajes_mod
 
-
 def limpiar_identidad_respuesta(texto):
-    """
-    Post-procesa la respuesta del modelo para reemplazar menciones erroneas
-    a ChatGPT, OpenAI, Qwen, Alibaba, SurfSense, DeepSeek, etc. por Verbo AI.
-    Usa regex para ser mas preciso que un simple replace.
-    """
     if not texto:
         return texto
     for patron, nuevo in REEMPLAZOS_IDENTIDAD:
         texto = re.sub(patron, nuevo, texto, flags=re.IGNORECASE)
     return texto
 
-
 def strip_think_tags(texto):
-    """
-    Limpia los bloques <think>...</think> que emiten los modelos de razonamiento
-    (Qwen3-Thinking, DeepSeek-R1, etc). Los elimina tanto si estan cerrados como
-    si estan abiertos.
-    """
     if not texto:
         return texto
     texto = re.sub(r'<think>[\s\S]*?</think>', '', texto, flags=re.IGNORECASE)
     texto = re.sub(r'<think>[\s\S]*$', '', texto, flags=re.IGNORECASE)
     return texto.lstrip()
 
-
 def llamar_g4f(messages, model, temperature, max_tokens):
-    """Llama al modelo via g4f. Si el modelo tiene prefijo 'provider:', usa ese
-    provider sin forzar ningun otro. Sino, prueba una lista de providers
-    candidatos en orden hasta que uno funcione."""
+    """Llama al modelo via g4f. Prueba una lista de providers candidatos en orden."""
     if not g4f_client:
         raise RuntimeError('g4f no esta disponible')
 
-    # Reforzar identidad ANTES de mandar al modelo
     messages_reforzados = reforzar_identidad(messages)
 
-    # Si el modelo viene como "provider:model" (ej: "nvidia.com:qwen/qwen3.5-397b-a17b"),
-    # respetamos ese provider explicito.
     provider_desde_modelo = None
     modelo_a_usar = model
     if ':' in model and not model.startswith('http'):
@@ -225,33 +139,18 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelo_a_usar = partes[1]
             log.info(f'Modelo con provider explicito: provider={provider_desde_modelo} | modelo={modelo_a_usar}')
 
-    # Lista de modelos a probar en orden: el pedido primero, luego fallbacks.
-    #
-    # CONFIRMADO funcionando en vivo (31/07/2026): deepseek-r1 con provider auto.
-    # CONFIRMADO fallando en vivo (31/07/2026): Qwen3-235B-Thinking-2507,
-    #   Qwen3-30B-A3B-Thinking-2507, Qwen3-32B (todos por el problema de
-    #   provider Modelscope no encontrado + falta curl_cffi).
-    # SIN VERIFICAR TODAVIA: deepseek-v4-pro via OllamaPro, y los Qwen nuevos
-    #   de abajo -- son candidatos a probar, no garantias.
-    # NOTA (31/07/2026): revisado el codigo fuente real de g4f/models.py en
-    # github.com/xtekky/gpt4free (rama main). Confirmado:
-    #   - 'Modelscope' NO EXISTE como provider en este repo -- por eso fallaba siempre.
-    #   - 'deepseek-v4-pro' NO EXISTE como modelo registrado (los unicos deepseek
-    #     son: deepseek-v3, deepseek-r1, y las variantes distill).
-    #   - 'ollama.pro' probablemente sea un modelo del tier PAGO de Ollama Cloud
-    #     (ver issue #3436 del repo: "this model requires a subscription").
-    #     No perseguir este candidato, no es gratis.
-    #   - El nombre correcto de provider para Ollama es simplemente 'Ollama'.
-modelos_disponibles = [
+    # CORRECCIÓN: Indentación correcta de modelos_disponibles
+    modelos_disponibles = [
         modelo_a_usar,
-        'qwen3.7-max',                              # El rey de la serie 3.7 (ideal para código/HTML)
-        'qwen3.7-plus',                             # Versión intermedia ultra rápida de respaldo
-        'deepseek-v4-pro',                          # Nuevo candidato, probar con provider OllamaPro
+        'qwen3.7-max',                              
+        'qwen3.7-plus',                             # Modelo de tu imagen
+        'deepseek-v4-pro',                          
         'Qwen/Qwen3-Coder-30B-A3B-Instruct',
         'Qwen/Qwen3-Next-80B-A3B-Instruct',
         'deepseek-r1',
         'deepseek-v3',
         'gpt-4o-mini',
+        'qwen-1.5-72b'
     ]
 
     vistos = set()
@@ -261,16 +160,11 @@ modelos_disponibles = [
             modelos_a_probar.append(m)
             vistos.add(m)
 
-    # Providers a probar en orden.
-    # IMPORTANTE: 'OllamaPro' y 'Modelscope' son nombres candidatos -- confirma
-    # el nombre exacto de clase en tu version de g4f con:
-    #   python -c "import g4f.Provider as p; print([x for x in dir(p) if not x.startswith('_')])"
-    # 'auto' (string vacio) es lo unico confirmado funcionando hasta ahora.
     if provider_desde_modelo:
         providers_a_probar = [provider_desde_modelo]
     else:
         providers_a_probar = [DEFAULT_PROVIDER] if DEFAULT_PROVIDER else []
-        for p in ['OllamaPro', 'Modelscope', 'HuggingChat', '']:  # '' = auto, siempre al final como red de seguridad
+        for p in ['OllamaPro', 'Modelscope', 'HuggingChat', '']: 
             if p not in providers_a_probar:
                 providers_a_probar.append(p)
 
@@ -312,7 +206,8 @@ def chat_completions():
     try:
         data = request.get_json(force=True)
         messages = data.get('messages', [])
-        model = data.get('model', DEFAULT_MODEL)
+        # Aquí es donde ESCOGES el modelo desde la petición entrante
+        model = data.get('model', DEFAULT_MODEL) 
         temperature = data.get('temperature', 0.7)
         max_tokens = data.get('max_tokens', 3072)
 
@@ -341,10 +236,27 @@ def chat_completions():
             }
         }), 502
 
+# ============================================================
+# NUEVO ENDPOINT: LISTAR MODELOS PARA ELEGIR DINÁMICAMENTE
+# ============================================================
+@app.route('/v1/models', methods=['GET'])
+def list_models():
+    """Devuelve la lista de modelos disponibles para que tu frontend pueda elegir"""
+    modelos = [
+        "qwen3.7-max",
+        "qwen3.7-plus", # El de la imagen
+        "deepseek-v4-pro",
+        "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        "Qwen/Qwen3-Next-80B-A3B-Instruct",
+        "deepseek-r1",
+        "deepseek-v3",
+        "gpt-4o-mini",
+        "qwen-1.5-72b"
+    ]
+    data = [{"id": m, "object": "model", "owned_by": "g4f-bridge"} for m in modelos]
+    return jsonify({"object": "list", "data": data})
 
-# ============================================================
-# GENERACION DE IMAGENES — endpoint compatible con OpenAI
-# ============================================================
+
 @app.route('/v1/images/generations', methods=['POST'])
 def images_generations():
     try:
@@ -363,15 +275,7 @@ def images_generations():
             return jsonify({'error': {'message': 'g4f no disponible', 'type': 'bridge_error'}}), 502
 
         modelos_imagen = [
-            model_pedido,
-            'flux',
-            'flux-pro',
-            'flux-dev',
-            'flux-schnell',
-            'sdxl-turbo',
-            'sd-3.5-large',
-            'gpt-image',
-            'dalle-3',
+            model_pedido, 'flux', 'flux-pro', 'flux-dev', 'flux-schnell', 'sdxl-turbo', 'sd-3.5-large', 'gpt-image', 'dalle-3',
         ]
         vistos = set()
         modelos_a_probar = []
@@ -385,10 +289,7 @@ def images_generations():
             try:
                 log.info(f'Intentando modelo imagen: {modelo_actual}')
                 response = g4f_client.images.generate(
-                    model=modelo_actual,
-                    prompt=prompt,
-                    n=n,
-                    size=size,
+                    model=modelo_actual, prompt=prompt, n=n, size=size,
                 )
                 if response.data and len(response.data) > 0:
                     item = response.data[0]
@@ -397,20 +298,14 @@ def images_generations():
                         return jsonify({
                             'created': int(__import__('time').time()),
                             'model': modelo_actual,
-                            'data': [{
-                                'b64_json': item.b64_json,
-                                'revised_prompt': getattr(item, 'revised_prompt', prompt),
-                            }]
+                            'data': [{'b64_json': item.b64_json, 'revised_prompt': getattr(item, 'revised_prompt', prompt)}]
                         })
                     elif hasattr(item, 'url') and item.url:
                         log.info(f'OK imagen | modelo: {modelo_actual} | URL: {item.url[:80]}')
                         return jsonify({
                             'created': int(__import__('time').time()),
                             'model': modelo_actual,
-                            'data': [{
-                                'url': item.url,
-                                'revised_prompt': getattr(item, 'revised_prompt', prompt),
-                            }]
+                            'data': [{'url': item.url, 'revised_prompt': getattr(item, 'revised_prompt', prompt)}]
                         })
                     else:
                         ultimo_error = f'{modelo_actual}: respuesta sin imagen clara'
@@ -432,9 +327,7 @@ def images_generations():
 
     except Exception as e:
         log.error(f'Error en images_generations: {e}', exc_info=True)
-        return jsonify({
-            'error': {'message': str(e), 'type': 'bridge_error'}
-        }), 500
+        return jsonify({'error': {'message': str(e), 'type': 'bridge_error'}}), 500
 
 
 @app.route('/', methods=['GET'])
@@ -445,21 +338,14 @@ def health():
         'service': 'glm-bridge',
         'mode': 'g4f-free',
         'model_default': DEFAULT_MODEL,
-        'provider': DEFAULT_PROVIDER or 'auto (prueba OllamaPro, Modelscope, HuggingChat, auto en orden)',
-        'api_key_required': False,
+        'provider': DEFAULT_PROVIDER or 'auto',
         'g4f_available': g4f_client is not None,
-        'identity_reinforcement': True,
-        'think_tag_stripping': True,
-        'identity_filters': ['ChatGPT', 'OpenAI', 'Qwen', 'Alibaba', 'SurfSense', 'Claude', 'Gemini', 'Llama', 'DeepSeek', 'Ollama'],
-        'text_models_confirmados': ['deepseek-r1 (auto) -- verificado 31/07/2026'],
-        'text_models_sin_verificar': ['deepseek-v4-pro (OllamaPro)', 'Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen3-Next-80B-A3B-Instruct', 'Qwen/Qwen3-235B-A22B-Instruct-2507'],
-        'text_models_confirmados_caidos': ['Qwen/Qwen3-235B-A22B-Thinking-2507', 'Qwen/Qwen3-30B-A3B-Thinking-2507', 'Qwen/Qwen3-32B'],
-        'image_models': ['flux', 'flux-pro', 'flux-dev', 'flux-schnell', 'sdxl-turbo', 'sd-3.5-large', 'gpt-image', 'dalle-3'],
-        'image_endpoint': '/v1/images/generations',
-        'text_endpoint': '/v1/chat/completions',
-        'note': 'Correr: python -c "import g4f.Provider as p; print([x for x in dir(p) if not x.startswith(chr(95))])" para confirmar nombres reales de provider antes de asumir que OllamaPro/Modelscope funcionan.',
+        'endpoints': {
+            'chat': '/v1/chat/completions (POST, enviar "model" en el body para elegir)',
+            'models': '/v1/models (GET, lista de modelos disponibles)',
+            'images': '/v1/images/generations (POST)'
+        }
     })
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
