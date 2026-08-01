@@ -242,15 +242,18 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     #     (ver issue #3436 del repo: "this model requires a subscription").
     #     No perseguir este candidato, no es gratis.
     #   - El nombre correcto de provider para Ollama es simplemente 'Ollama'.
-    modelos_disponibles = [
+modelos_disponibles = [
         modelo_a_usar,
-        'deepseek-v4-pro',                          # nuevo candidato, probar con provider OllamaPro
+        'qwen3.7-max',                              # El rey de la serie 3.7 (ideal para código/HTML)
+        'qwen3.7-plus',                             # Versión intermedia ultra rápida de respaldo
+        'deepseek-v4-pro',                          # Nuevo candidato, probar con provider OllamaPro
         'Qwen/Qwen3-Coder-30B-A3B-Instruct',
         'Qwen/Qwen3-Next-80B-A3B-Instruct',
         'deepseek-r1',
         'deepseek-v3',
         'gpt-4o-mini',
     ]
+
     vistos = set()
     modelos_a_probar = []
     for m in modelos_disponibles:
