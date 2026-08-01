@@ -8,6 +8,7 @@ import re
 import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import g4f
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
@@ -15,7 +16,7 @@ log = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# Cambiamos el modelo por defecto para que incluya el prefijo qwen/
+# Modelo por defecto con prefijo qwen/
 DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'qwen/qwen3.7-plus')
 DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')  
 
@@ -23,6 +24,18 @@ g4f_client = None
 try:
     from g4f.client import Client
     g4f_client = Client()
+    
+    # OPTIMIZACIÓN: Ignorar OpenRouter globalmente para evitar el error de "Key limit exceeded"
+    try:
+        if hasattr(g4f, 'Provider') and hasattr(g4f.Provider, 'Best'):
+            g4f.Provider.Best.working_providers = [
+                p for p in g4f.Provider.Best.working_providers 
+                if p.__name__ != 'OpenRouter'
+            ]
+            log.info("OpenRouter eliminado de la lista de providers para evitar saturación.")
+    except Exception as e_ignore:
+        log.warning(f"No se pudo filtrar OpenRouter automáticamente: {e_ignore}")
+
     log.info(f'g4f inicializado | modelo: {DEFAULT_MODEL} | provider: {DEFAULT_PROVIDER}')
 except ImportError:
     log.error('g4f no instalado. Ejecuta: pip install -r requirements.txt')
@@ -125,7 +138,7 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelo_a_usar = partes[1]
             log.info(f'Modelo con provider explicito: provider={provider_desde_modelo} | modelo={modelo_a_usar}')
 
-    # CORRECCIÓN: Añadido el prefijo qwen/ a los modelos correspondientes
+    # Modelos disponibles con prefijo qwen/
     modelos_disponibles = [
         modelo_a_usar,
         'qwen/qwen3.7-max',                              
@@ -146,12 +159,12 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelos_a_probar.append(m)
             vistos.add(m)
 
-    # Mantenemos OllamaPro y HuggingChat
+    # OPTIMIZACIÓN: Quitamos OllamaPro porque daba error de "Not Found" y tardaba tiempo
     if provider_desde_modelo:
         providers_a_probar = [provider_desde_modelo]
     else:
         providers_a_probar = [DEFAULT_PROVIDER] if DEFAULT_PROVIDER else []
-        for p in ['OllamaPro', 'HuggingChat', '']: 
+        for p in ['', 'HuggingChat']:  # '' = auto (ignorando OpenRouter)
             if p not in providers_a_probar:
                 providers_a_probar.append(p)
 
