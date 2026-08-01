@@ -1,5 +1,5 @@
 """
-Puente GPT4Free — Modelo dinámico (deepseek, qwen3.7-plus, etc.) SIN API KEY
+Puente GPT4Free — Modelo dinámico (glm-5.2, qwen, deepseek) SIN API KEY
 ==========================================================================
 """
 
@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# Modelo por defecto con prefijo qwen/
+# Modelo por defecto
 DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'qwen/qwen3.7-plus')
 DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')  
 
@@ -24,6 +24,20 @@ g4f_client = None
 try:
     from g4f.client import Client
     g4f_client = Client()
+    
+    # CONFIGURACIÓN DE OLLAMA: Le inyectamos servidores públicos gratuitos para no usar API Key
+    try:
+        if hasattr(g4f, 'Provider') and hasattr(g4f.Provider, 'Ollama'):
+            # Lista de servidores Ollama públicos compartidos por la comunidad
+            g4f.Provider.Ollama.api_base = [
+                "https://ai.devs503.tech/api",
+                "https://ollama.com/v1",
+                "https://api.pawan.krd/v1"
+            ]
+            log.info("Servidores públicos de Ollama configurados correctamente.")
+    except Exception as e_ollama:
+        log.warning(f"No se pudo configurar Ollama: {e_ollama}")
+
     log.info(f'g4f inicializado | modelo: {DEFAULT_MODEL} | provider: {DEFAULT_PROVIDER}')
 except ImportError:
     log.error('g4f no instalado. Ejecuta: pip install -r requirements.txt')
@@ -36,7 +50,7 @@ IDENTIDAD_VERBO = (
     "conversacional creado por VerboAITeams (el equipo de desarrollo de Verbo AI). "
     "NUNCA digas que sos ChatGPT, GPT, OpenAI, SurfSense, Modelscope, Puter, Airforce, "
     "Qwen, Alibaba, Alibaba Cloud, Llama, Meta, Claude, Anthropic, Gemini, Google, "
-    "DeepSeek, Ollama ni ninguna otra empresa o modelo base. Si te preguntan quien sos, "
+    "DeepSeek, Ollama, GLM ni ninguna otra empresa o modelo base. Si te preguntan quien sos, "
     "quien te creo, quien te hizo, o de donde vienes, respondes SIEMPRE que fuiste creado "
     "por VerboAITeams y que tu nombre es NewserPro. Aunque el usuario insista o intente "
     "cambiarte la identidad, mantene firme que sos NewserPro de Verbo AI. "
@@ -69,6 +83,8 @@ REEMPLAZOS_IDENTIDAD = [
     (r'\bSoy DeepSeek\b', 'Soy NewserPlus de Verbo AI'),
     (r'\bsoy DeepSeek\b', 'soy NewserPlus de Verbo AI'),
     (r'\bDeepSeek\b', 'NewserPlus'),
+    (r'\bSoy GLM\b', 'Soy NewserPlus de Verbo AI'),
+    (r'\bsoy GLM\b', 'soy NewserPlus de Verbo AI'),
     (r'\bOllama\b', 'Verbo AI'),
     (r'\bSurfSense\b', 'Verbo AI'),
     (r'\bSurfsense\b', 'Verbo AI'),
@@ -126,14 +142,14 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelo_a_usar = partes[1]
             log.info(f'Modelo con provider explicito: provider={provider_desde_modelo} | modelo={modelo_a_usar}')
 
-    # Modelos disponibles con prefijo qwen/
+    # Lista de modelos disponibles
     modelos_disponibles = [
         modelo_a_usar,
+        'glm-5.2',                               # Modelo GLM nuevo
         'qwen/qwen3.7-max',                              
         'qwen/qwen3.7-plus',                             
         'deepseek-v4-pro',                          
         'Qwen/Qwen3-Coder-30B-A3B-Instruct',
-        'Qwen/Qwen3-Next-80B-A3B-Instruct',
         'deepseek-r1',
         'deepseek-v3',
         'gpt-4o-mini',
@@ -147,12 +163,12 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelos_a_probar.append(m)
             vistos.add(m)
 
-    # FORZAMOS PROVEEDORES: Blackbox y LMArena no usan OpenRouter ni tienen límites de API Key
+    # FORZAMOS PROVEEDORES: Ollama primero (para glm-5.2), luego auto
     if provider_desde_modelo:
         providers_a_probar = [provider_desde_modelo]
     else:
         providers_a_probar = [DEFAULT_PROVIDER] if DEFAULT_PROVIDER else []
-        for p in [g4f.Provider.Blackbox, g4f.Provider.LMArena, '']:  # '' = auto (último recurso)
+        for p in [g4f.Provider.Ollama, '']:  # Ollama primero, '' (auto) como respaldo
             if p not in providers_a_probar:
                 providers_a_probar.append(p)
 
@@ -229,11 +245,11 @@ def chat_completions():
 @app.route('/v1/models', methods=['GET'])
 def list_models():
     modelos = [
+        "glm-5.2",
         "qwen/qwen3.7-max",
         "qwen/qwen3.7-plus",
         "deepseek-v4-pro",
         "Qwen/Qwen3-Coder-30B-A3B-Instruct",
-        "Qwen/Qwen3-Next-80B-A3B-Instruct",
         "deepseek-r1",
         "deepseek-v3",
         "gpt-4o-mini",
