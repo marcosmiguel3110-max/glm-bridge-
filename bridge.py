@@ -1,6 +1,6 @@
 """
 Puente GPT4Free — Modelo dinámico (glm-5.2, qwen, deepseek) SIN API KEY
-Con rotación de IPs vía Webshare proxies
+Con rotación de IPs vía proxies gratuitos
 ==========================================================================
 """
 
@@ -133,7 +133,7 @@ try:
             'http': PROXY_LIST[0],
             'https': PROXY_LIST[0]
         }
-        log.info(f"[Webshare] Client g4f configurado con proxy")
+        log.info(f"[Proxies] Client g4f configurado con proxy por defecto")
     
     g4f_client = Client(**client_kwargs)
     
@@ -150,7 +150,7 @@ try:
     except Exception as e_ollama:
         log.warning(f"No se pudo configurar Ollama: {e_ollama}")
 
-    log.info(f'g4f inicializado | modelo: {DEFAULT_MODEL} | provider: {DEFAULT_PROVIDER} | webshare: {WEBSHARE_ENABLED}')
+    log.info(f'g4f inicializado | modelo: {DEFAULT_MODEL} | provider: {DEFAULT_PROVIDER} | proxy_rotation: {PROXY_ROTATION_ENABLED}')
 except ImportError:
     log.error('g4f no instalado. Ejecuta: pip install -r requirements.txt')
 except Exception as e:
