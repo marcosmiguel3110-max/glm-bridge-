@@ -19,19 +19,27 @@ app = Flask(__name__)
 CORS(app)
 
 # ============================================================
-# CONFIGURACIÓN WEBSHARE PROXIES (DESHABILITADO TEMPORALMENTE)
+# CONFIGURACIÓN PROXIES GRATUITOS (ROTACIÓN DE IPs)
 # ============================================================
-# Webshare proxies no son compatibles con g4f (curl_cffi)
-# Mantenemos la configuración para futuras implementaciones alternativas
-WEBSHARE_ENABLED = False  # Deshabilitado temporalmente por incompatibilidad con g4f
-WEBSHARE_PROXY_HOST = os.getenv('WEBSHARE_PROXY_HOST', '')
-WEBSHARE_PROXY_PORT = os.getenv('WEBSHARE_PROXY_PORT', '')
-WEBSHARE_PROXY_USER = os.getenv('WEBSHARE_PROXY_USER', '')
-WEBSHARE_PROXY_PASS = os.getenv('WEBSHARE_PROXY_PASS', '')
+# Lista de proxies públicos gratuitos para rotación de IPs
+# Obtenidos de free-proxy-list.net y similares
+# Formato: http://ip:port o http://user:pass@ip:port
+FREE_PROXIES = os.getenv('FREE_PROXIES', '').split(',') if os.getenv('FREE_PROXIES') else [
+    # Proxies públicos gratuitos (ejemplos - actualizar periódicamente)
+    'http://proxy1.example.com:8080',
+    'http://proxy2.example.com:8080',
+    'http://proxy3.example.com:8080',
+    # NOTA: Estos son ejemplos. Reemplazar con proxies reales de:
+    # - https://free-proxy-list.net/
+    # - https://www.sslproxies.org/
+    # - https://github.com/clarketm/proxy-list
+]
 
-# Lista de proxies Webshare (deshabilitado temporalmente)
-PROXY_LIST = []
-log.info("[Webshare] Proxies deshabilitados temporalmente (incompatibilidad con g4f/curl_cffi)")
+# Filtrar proxies vacíos
+PROXY_LIST = [p.strip() for p in FREE_PROXIES if p.strip()]
+PROXY_ROTATION_ENABLED = len(PROXY_LIST) > 0
+
+log.info(f"[Proxies] Rotación de IPs: {'habilitada' if PROXY_ROTATION_ENABLED else 'deshabilitada'} | {len(PROXY_LIST)} proxies disponibles")
 
 # Modelo por defecto (cambiado a modelo que funciona gratis)
 DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'deepseek-v3')
@@ -157,9 +165,9 @@ def strip_think_tags(texto):
 
 def obtener_proxy_rotativo():
     """Obtiene un proxy aleatorio de la lista para rotación de IPs"""
-    if PROXY_LIST:
+    if PROXY_ROTATION_ENABLED and PROXY_LIST:
         proxy = random.choice(PROXY_LIST)
-        log.info(f"[Webshare] Usando proxy rotativo: {proxy[:30]}...")
+        log.info(f"[Proxies] Usando proxy rotativo: {proxy[:30]}...")
         return {'http': proxy, 'https': proxy}
     return None
 
@@ -212,12 +220,12 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     for modelo_actual in modelos_a_probar:
         for provider_actual in providers_a_probar:
             # Intentar primero con proxy si está disponible
-            for usar_proxy in [True, False] if PROXY_LIST else [False]:
+            for usar_proxy in [True, False] if PROXY_ROTATION_ENABLED else [False]:
                 try:
                     provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
                     
-                    # Solo usar proxy si Webshare está habilitado y es el primer intento
-                    proxy_config = obtener_proxy_rotativo() if (usar_proxy and PROXY_LIST) else None
+                    # Usar proxy rotativo si está habilitado y es el primer intento
+                    proxy_config = obtener_proxy_rotativo() if (usar_proxy and PROXY_ROTATION_ENABLED) else None
                     
                     log.info(f'Intentando modelo: {modelo_actual} | provider: {provider_name} | proxy: {"si" if proxy_config else "no"}')
                     
@@ -408,8 +416,8 @@ def health():
         'model_default': DEFAULT_MODEL,
         'provider': DEFAULT_PROVIDER or 'auto',
         'g4f_available': g4f_client is not None,
-        'webshare_enabled': WEBSHARE_ENABLED,
-        'webshare_proxies_count': len(PROXY_LIST),
+        'proxy_rotation_enabled': PROXY_ROTATION_ENABLED,
+        'proxy_count': len(PROXY_LIST),
         'endpoints': {
             'chat': '/v1/chat/completions (POST, enviar "model" en el body para elegir)',
             'models': '/v1/models (GET, lista de modelos disponibles)',

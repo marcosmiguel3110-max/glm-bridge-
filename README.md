@@ -8,41 +8,57 @@ Puente Python/Flask que expone `POST /v1/chat/completions` (formato OpenAI) y ll
 - **Identidad**: Fuertemente reforzada — el modelo SIEMPRE se presenta como "NewserPro de Verbo AI"
 - **Fallbacks**: Si el modelo principal falla, prueba automáticamente otros modelos disponibles
 
-## Rotación de IPs con Webshare (Opcional)
+## Rotación de IPs con Proxies Gratuitos (Opcional)
 
-Para evitar límites de requests por IP (24h cooldown), puedes configurar **Webshare proxies**:
+Para evitar límites de requests por IP (200 requests/día en g4f), puedes configurar **proxies públicos gratuitos**:
 
-1. **Crear cuenta gratis en Webshare** (https://www.webshare.io):
-   - 10 proxies gratis (1GB/mes)
-   - Sin tarjeta de crédito
+### Opción 1: Proxies Públicos Gratuitos
 
-2. **Obtener credenciales del proxy**:
-   - Proxy Host
-   - Proxy Port
-   - Username
-   - Password
+1. **Obtener lista de proxies gratuitos**:
+   - Visita: https://free-proxy-list.net/
+   - Filtra por: HTTP, HTTPS, nivel "Elite" o "Anonymous"
+   - Copia IPs en formato: `http://ip:port`
 
-3. **Configurar en Render**:
+2. **Configurar en Render**:
    - Ve a tu servicio en Render → Environment
-   - Agrega estas variables:
+   - Agrega esta variable (separar por coma múltiples proxies):
      ```
-     WEBSHARE_ENABLED=true
-     WEBSHARE_PROXY_HOST=your-proxy-host
-     WEBSHARE_PROXY_PORT=your-proxy-port
-     WEBSHARE_PROXY_USER=your-username
-     WEBSHARE_PROXY_PASS=your-password
+     FREE_PROXIES=http://proxy1.example.com:8080,http://proxy2.example.com:8080,http://proxy3.example.com:8080
      ```
 
-4. **Verificar que funciona**:
+3. **Verificar que funciona**:
    ```bash
    curl https://tu-bridge.onrender.com/health
    ```
-   Debería mostrar `"webshare_enabled": true` y `"webshare_proxies_count": 1`
+   Debería mostrar `"proxy_rotation_enabled": true` y `"proxy_count": 3`
+
+**Fuentes de proxies gratuitos:**
+- https://free-proxy-list.net/
+- https://www.sslproxies.org/
+- https://github.com/clarketm/proxy-list
+- https://spys.me/en/
 
 **Beneficios:**
 - Rotación automática de IPs en cada request
-- Evita límites de 24h por IP
-- 80M+ IPs disponibles (plan de pago)
+- Evita límites de 200 requests/día por IP
+- 100% gratis, sin registro
+
+**Notas:**
+- Los proxies gratuitos pueden ser inestables o lentos
+- Recomienda actualizar la lista periódicamente
+- Si un proxy falla, el sistema reintenta sin proxy automáticamente
+
+### Opción 2: Webshare Proxies (De pago, más confiable)
+
+Si necesitas proxies más confiables, puedes usar Webshare:
+
+1. **Crear cuenta en Webshare** (https://www.webshare.io):
+   - 10 proxies gratis (1GB/mes)
+   - Planes de pago con más proxies
+
+2. **Configurar en bridge.py** (necesita modificación manual):
+   - Reemplazar la configuración de proxies gratuitos con Webshare
+   - Consulta la documentación anterior de Webshare en el código
 
 ## Deploy en Render (5 minutos)
 
