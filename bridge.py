@@ -243,7 +243,9 @@ def obtener_proxy_rotativo():
     """Obtiene un proxy aleatorio de la lista para rotación de IPs"""
     if PROXY_ROTATION_ENABLED and PROXY_LIST:
         proxy = random.choice(PROXY_LIST)
-        log.info(f"[Proxies] Usando proxy rotativo: {proxy[:30]}...")
+        # Extraer solo la IP para logging (sin puerto)
+        ip = proxy.split('://')[1].split(':')[0] if '://' in proxy else proxy.split(':')[0]
+        log.info(f"[Proxies] Usando IP rotativa: {ip}")
         return {'http': proxy, 'https': proxy}
     return None
 
