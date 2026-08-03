@@ -182,3 +182,33 @@ export G4F_API_KEY="tu-key-de-g4f-aqui"
 - **Usa cuentas de GitHub separadas** para cada key (5M tokens por cuenta)
 - **Configura alertas** 30 días antes de la expiración de las keys
 - **Rotación periódica**: Registra nuevas cuentas antes de que expiren las actuales
+
+### Alertas por Email (Opcional)
+
+El sistema puede enviar alertas por email cuando las keys estén por expirar:
+
+**Configurar SMTP:**
+```bash
+# Para Gmail (recomendado)
+export SMTP_USER="marcos.miguel.3110@gmail.com"
+export SMTP_PASSWORD="tu_app_password"
+
+# El email de alertas se configura automáticamente a marcos.miguel.3110@gmail.com
+```
+
+**Obtener App Password de Gmail:**
+1. Ve a https://myaccount.google.com/apppasswords
+2. Activa la verificación en 2 pasos si no está activa
+3. Crea una nueva App Password
+4. Usa esa contraseña como `SMTP_PASSWORD`
+
+**Funcionamiento:**
+- Las alertas se envían automáticamente 30 días antes de la expiración
+- Solo se envían a `marcos.miguel.3110@gmail.com`
+- No aparecen en el chat del bridge (silencioso)
+- Puedes enviar alertas manualmente con el gestor (opción 6)
+
+**Sin configuración SMTP:**
+- El sistema funciona normalmente sin SMTP
+- Las alertas solo se muestran en consola al ejecutar el gestor
+- El bridge no muestra alertas en el chat

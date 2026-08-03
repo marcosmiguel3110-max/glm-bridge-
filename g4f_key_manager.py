@@ -3,12 +3,16 @@
 Gestor de Keys de G4F
 Sistema para rotar múltiples keys de G4F y detectar expiración
 CON ENCRIPTACIÓN SIMPLE PARA PROTEGER LAS KEYS EN DISCO
+CON ALERTAS POR EMAIL
 """
 
 import os
 import json
 import time
 import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import base64
@@ -20,6 +24,13 @@ KEYS_FILE_JSON = os.path.join(os.path.dirname(__file__), 'g4f_keys.json')  # Ver
 
 # URL de G4F para verificar key
 G4F_API_URL = "https://g4f.space/v1/chat/completions"
+
+# Configuración de alertas por email
+ALERT_EMAIL = os.getenv('G4F_ALERT_EMAIL', 'marcos.miguel.3110@gmail.com')
+SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
+SMTP_USER = os.getenv('SMTP_USER', '')
+SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
 
 class G4FKeyManager:
     def __init__(self):
@@ -217,6 +228,70 @@ class G4FKeyManager:
         
         return keys_por_expirar
     
+    def enviar_alerta_email(self, keys_por_expirar: List[Dict]):
+        """Enviar alerta por email sobre keys por expirar"""
+        if not SMTP_USER or not SMTP_PASSWORD:
+            print("[Alertas] No hay configuración SMTP, no se enviará email")
+            return False
+        
+        if not keys_por_expirar:
+            return False
+        
+        try:
+            # Crear mensaje
+            msg = MIMEMultipart()
+            msg['From'] = SMTP_USER
+            msg['To'] = ALERT_EMAIL
+            msg['Subject'] = f"⚠️ ALERTA: Keys de G4F por expirar ({len(keys_por_expirar)} keys)"
+            
+            # Cuerpo del email
+            body = f"""
+            <html>
+            <body>
+                <h2>⚠️ ALERTA: Keys de G4F por expirar</h2>
+                <p>Las siguientes keys de G4F están por expirar:</p>
+                <ul>
+            """
+            
+            for k in keys_por_expirar:
+                body += f"""
+                    <li>
+                        <strong>Cuenta:</strong> {k['cuenta']}<br>
+                        <strong>Key:</strong> {k['key']}<br>
+                        <strong>Expira:</strong> {k['fecha_expiracion']}<br>
+                        <strong>Días restantes:</strong> {k['dias_restantes']}
+                    </li>
+                """
+            
+            body += """
+                </ul>
+                <p><strong>Acción requerida:</strong></p>
+                <ol>
+                    <li>Ve a https://g4f.dev/members</li>
+                    <li>Registra nuevas cuentas de GitHub</li>
+                    <li>Copia las nuevas API keys</li>
+                    <li>Ejecuta: python g4f_key_manager.py</li>
+                    <li>Selecciona "Agregar nueva key" para cada nueva cuenta</li>
+                </ol>
+                <p><em>Este mensaje fue enviado automáticamente por el Gestor de Keys de G4F</em></p>
+            </body>
+            </html>
+            """
+            
+            msg.attach(MIMEText(body, 'html'))
+            
+            # Enviar email
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
+            
+            print(f"[Alertas] Email enviado a {ALERT_EMAIL}")
+            return True
+        except Exception as e:
+            print(f"[Alertas] Error enviando email: {e}")
+            return False
+    
     def verificar_keys_expiradas_por_fecha(self):
         """Marcar keys como expiradas si la fecha ya pasó"""
         hoy = datetime.now()
@@ -246,7 +321,7 @@ def main():
     # Verificar keys expiradas por fecha al iniciar
     manager.verificar_keys_expiradas_por_fecha()
     
-    # Mostrar alerta de keys por expirar
+    # Verificar keys por expirar y enviar alerta por email
     keys_por_expirar = manager.verificar_expiracion_proxima(dias_alerta=30)
     if keys_por_expirar:
         print("\n" + "="*60)
@@ -256,6 +331,10 @@ def main():
             print(f"  - {k['key']} ({k['cuenta']})")
             print(f"    Expira: {k['fecha_expiracion']} ({k['dias_restantes']} días)")
         print("="*60)
+        
+        # Enviar alerta por email automáticamente
+        print("\nEnviando alerta por email...")
+        manager.enviar_alerta_email(keys_por_expirar)
     
     print("\n" + "="*60)
     print("Gestor de Keys de G4F")
@@ -268,11 +347,13 @@ def main():
         print("3. Verificar todas las keys")
         print("4. Ver estadísticas")
         print("5. Ver keys por expirar")
-        print("6. Limpiar keys expiradas")
-        print("7. Instrucciones para registrar nueva cuenta")
-        print("8. Salir")
+        print("6. Enviar alerta por email")
+        print("7. Limpiar keys expiradas")
+        print("8. Instrucciones para registrar nueva cuenta")
+        print("9. Configurar SMTP para alertas")
+        print("10. Salir")
         
-        opcion = input("\nSelecciona una opción (1-8): ")
+        opcion = input("\nSelecciona una opción (1-10): ")
         
         if opcion == "1":
             key = input("Ingresa la key de G4F: ").strip()
@@ -311,9 +392,17 @@ def main():
                 print("\n✓ No hay keys por expirar en los próximos 30 días")
         
         elif opcion == "6":
-            manager.limpiar_keys_expiradas()
+            keys_por_expirar = manager.verificar_expiracion_proxima(dias_alerta=30)
+            if keys_por_expirar:
+                print("\nEnviando alerta por email...")
+                manager.enviar_alerta_email(keys_por_expirar)
+            else:
+                print("\nNo hay keys por expirar para enviar alerta")
         
         elif opcion == "7":
+            manager.limpiar_keys_expiradas()
+        
+        elif opcion == "8":
             print("\n" + "="*60)
             print("Instrucciones para registrar nueva cuenta de G4F")
             print("="*60)
@@ -327,7 +416,26 @@ def main():
             print("\nNota: Cada cuenta de GitHub te da 5 millones de tokens")
             print("="*60)
         
-        elif opcion == "8":
+        elif opcion == "9":
+            print("\n" + "="*60)
+            print("Configurar SMTP para alertas por email")
+            print("="*60)
+            print("\nConfiguración actual:")
+            print(f"  Email de alertas: {ALERT_EMAIL}")
+            print(f"  Servidor SMTP: {SMTP_SERVER}")
+            print(f"  Puerto SMTP: {SMTP_PORT}")
+            print(f"  Usuario SMTP: {SMTP_USER if SMTP_USER else 'No configurado'}")
+            print(f"  Password SMTP: {'Configurado' if SMTP_PASSWORD else 'No configurado'}")
+            print("\nPara configurar SMTP, establece estas variables de entorno:")
+            print("  SMTP_USER=tu_email@gmail.com")
+            print("  SMTP_PASSWORD=tu_app_password")
+            print("\nPara Gmail, necesitas usar una App Password:")
+            print("  1. Ve a https://myaccount.google.com/apppasswords")
+            print("  2. Crea una nueva App Password")
+            print("  3. Usa esa contraseña como SMTP_PASSWORD")
+            print("="*60)
+        
+        elif opcion == "10":
             print("Saliendo...")
             break
         

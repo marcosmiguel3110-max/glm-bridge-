@@ -25,6 +25,12 @@ CORS(app)
 # Inicializar gestor de keys para rotación automática
 g4f_key_manager = G4FKeyManager()
 
+# Verificar keys por expirar y enviar alerta por email (SILENCIOSO - no muestra en chat)
+keys_por_expirar = g4f_key_manager.verificar_expiracion_proxima(dias_alerta=30)
+if keys_por_expirar:
+    # Enviar alerta por email sin mostrar en logs del bridge
+    g4f_key_manager.enviar_alerta_email(keys_por_expirar)
+
 # Estado global de keys (mutable para poder modificar en funciones)
 g4f_keys_state = {
     'current_key': os.getenv('G4F_API_KEY') or g4f_key_manager.obtener_key_activa(),
