@@ -169,6 +169,11 @@ try:
     try:
         import os
         har_dir = os.path.join(os.path.dirname(__file__), 'har_and_cookies')
+        # Crear directorio automáticamente si no existe
+        if not os.path.exists(har_dir):
+            os.makedirs(har_dir, exist_ok=True)
+            log.info("[DeepSeek] Directorio har_and_cookies/ creado automáticamente")
+        
         if os.path.exists(har_dir):
             har_files = [f for f in os.listdir(har_dir) if f.endswith('.har')]
             if har_files:
