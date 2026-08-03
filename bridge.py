@@ -143,7 +143,6 @@ RECOMMENDED_PROVIDERS = [
 # Providers específicos para Claude (si están disponibles)
 CLAUDE_PROVIDERS = [
     'Blackbox',    # Claude y modelos de código/diseño muy estables
-    'Airforce',    # Excelente abanico de modelos sin restricciones
 ]
 
 # Providers a IGNORAR (requieren auth, fallan en Render, o tienen problemas)
@@ -155,6 +154,7 @@ IGNORED_PROVIDERS = [
     'Phind',       # Inestable
     'Perplexity',  # BLOQUEADO en Render (Cloudflare blacklist)
     'DuckDuckGo',  # Inestable
+    'Airforce',    # Pide API key
 ]
 
 # Cargar providers recomendados dinámicamente
