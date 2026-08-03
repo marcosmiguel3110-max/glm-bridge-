@@ -121,6 +121,33 @@ log.info(f"[Proxies] Rotación de IPs: {'habilitada' if PROXY_ROTATION_ENABLED e
 DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'deepseek-v3')
 DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 
+# ============================================================
+# CONFIGURACIÓN SCRAPING AVANZADO (PROVIDERS QUE USAN WEB SCRAPING)
+# ============================================================
+# Providers que usan scraping web en lugar de API (más robustos)
+SCRAPING_PROVIDERS = [
+    'DeepSeek',
+    'Poe',
+    'You',
+    'Perplexity',
+    'Phind',
+    'Blackbox',
+    'Cohere',
+]
+
+# Intentar obtener providers de g4f dinámicamente
+AVAILABLE_SCRAPING_PROVIDERS = []
+for provider_name in SCRAPING_PROVIDERS:
+    try:
+        if hasattr(g4f.Provider, provider_name):
+            provider_class = getattr(g4f.Provider, provider_name)
+            AVAILABLE_SCRAPING_PROVIDERS.append(provider_class)
+            log.info(f"[Scraping] Provider disponible: {provider_name}")
+    except Exception as e:
+        log.warning(f"[Scraping] No se pudo cargar provider {provider_name}: {e}")
+
+log.info(f"[Scraping] Total providers de scraping disponibles: {len(AVAILABLE_SCRAPING_PROVIDERS)}")
+
 g4f_client = None
 try:
     from g4f.client import Client
@@ -250,6 +277,27 @@ def obtener_proxy_rotativo():
         return {'http': proxy, 'https': proxy}
     return None
 
+def detectar_tipo_request(messages):
+    """Detecta si el request es para diseño/canvas/juegos basado en el contenido"""
+    if not messages:
+        return 'general'
+    
+    texto_completo = ' '.join([m.get('content', '') for m in messages]).lower()
+    
+    # Palabras clave para diseño/canvas/juegos
+    keywords_design = [
+        'canvas', 'juego', 'game', 'diseño', 'design', 'animación', 'animation',
+        'sprite', 'tile', 'voxel', 'minecraft', 'terraria', 'three.js', 'webgl',
+        'gráfico', 'graphic', 'render', 'shader', 'texture', 'modelo 3d', '3d model',
+        'motor de juego', 'game engine', 'physics', 'colisión', 'collision'
+    ]
+    
+    for keyword in keywords_design:
+        if keyword in texto_completo:
+            return 'design'
+    
+    return 'general'
+
 def llamar_g4f(messages, model, temperature, max_tokens):
     if not g4f_client:
         raise RuntimeError('g4f no esta disponible')
@@ -265,23 +313,51 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelo_a_usar = partes[1]
             log.info(f'Modelo con provider explicito: provider={provider_desde_modelo} | modelo={modelo_a_usar}')
 
-    # Lista de modelos disponibles (glm-5.2 requiere suscripción Ollama, movido al final)
-    modelos_disponibles = [
-        modelo_a_usar,
-        'kimi-k2.7-code',  # Nuevo modelo de coding desde ollama.pro
-        'deepseek-v3',
-        'deepseek-v4-pro',
-        'deepseek-r1',
-        'qwen/qwen3.7-max',
-        'qwen/qwen3.7-plus',
-        'Qwen/Qwen3-Coder-30B-A3B-Instruct',
-        'gpt-4o-mini',
-        'gpt-4o',
-        'gemini-1.5-flash',
-        'gemini-1.5-pro',
-        'qwen/qwen-1.5-72b',
-        'glm-5.2',  # Requiere suscripción Ollama (error 403)
-    ]
+    # Detectar tipo de request para seleccionar cascada apropiada
+    tipo_request = detectar_tipo_request(messages)
+    log.info(f"[Cascada] Tipo de request detectado: {tipo_request}")
+    
+    # CASCADA DE MODELOS SEGÚN TIPO DE REQUEST
+    if tipo_request == 'design':
+        # Cascada para diseño/canvas/juegos (modelos especializados primero)
+        modelos_disponibles = [
+            modelo_a_usar,
+            # Modelos especializados en diseño y código
+            'claude-3-5-sonnet',  # Excelente para diseño y código
+            'gpt-4o',  # Multimodal, bueno para diseño
+            'deepseek-coder',  # Especializado en código
+            'Qwen/Qwen3-Coder-30B-A3B-Instruct',  # Coding avanzado
+            'kimi-k2.7-code',  # Coding desde ollama.pro
+            'gpt-4-turbo',  # Bueno para diseño
+            'claude-3-opus',  # Alta capacidad
+            # Fallback a modelos generales
+            'deepseek-v3',
+            'deepseek-v4-pro',
+            'qwen/qwen3.7-max',
+            'gpt-4o-mini',
+            'qwen/qwen3.7-plus',
+            'deepseek-r1',
+            'qwen/qwen-1.5-72b',
+            'glm-5.2',  # Requiere suscripción Ollama (error 403)
+        ]
+    else:
+        # Cascada general (modelos balanceados)
+        modelos_disponibles = [
+            modelo_a_usar,
+            'kimi-k2.7-code',  # Nuevo modelo de coding desde ollama.pro
+            'deepseek-v3',
+            'deepseek-v4-pro',
+            'deepseek-r1',
+            'qwen/qwen3.7-max',
+            'qwen/qwen3.7-plus',
+            'Qwen/Qwen3-Coder-30B-A3B-Instruct',
+            'gpt-4o-mini',
+            'gpt-4o',
+            'gemini-1.5-flash',
+            'gemini-1.5-pro',
+            'qwen/qwen-1.5-72b',
+            'glm-5.2',  # Requiere suscripción Ollama (error 403)
+        ]
 
     vistos = set()
     modelos_a_probar = []
@@ -290,12 +366,21 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelos_a_probar.append(m)
             vistos.add(m)
 
-    # FORZAMOS PROVEEDORES: auto primero (Ollama requiere suscripción para glm-5.2)
+    # FORZAMOS PROVEEDORES: cascada inteligente con scraping primero
     if provider_desde_modelo:
         providers_a_probar = [provider_desde_modelo]
     else:
         providers_a_probar = [DEFAULT_PROVIDER] if DEFAULT_PROVIDER else []
-        for p in ['', g4f.Provider.Ollama]:  # '' (auto) primero, Ollama como respaldo
+        
+        # Para requests de diseño, priorizar providers de scraping
+        if tipo_request == 'design' and AVAILABLE_SCRAPING_PROVIDERS:
+            log.info(f"[Cascada] Usando providers de scraping para diseño")
+            for provider in AVAILABLE_SCRAPING_PROVIDERS:
+                if provider not in providers_a_probar:
+                    providers_a_probar.append(provider)
+        
+        # Auto y Ollama como fallback
+        for p in ['', g4f.Provider.Ollama]:
             if p not in providers_a_probar:
                 providers_a_probar.append(p)
 
@@ -403,6 +488,12 @@ def chat_completions():
 @app.route('/v1/models', methods=['GET'])
 def list_models():
     modelos = [
+        # Modelos especializados en diseño/canvas/juegos
+        "claude-3-5-sonnet",
+        "claude-3-opus",
+        "deepseek-coder",
+        "gpt-4-turbo",
+        # Modelos generales y coding
         "kimi-k2.7-code",
         "glm-5.2",
         "qwen/qwen3.7-max",
