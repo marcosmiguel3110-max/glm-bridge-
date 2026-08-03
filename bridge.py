@@ -124,24 +124,34 @@ DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 # ============================================================
 # CONFIGURACIÓN PROVIDERS RECOMENDADOS (100% GRATUITOS, SIN AUTH)
 # ============================================================
-# Providers que funcionan sin autenticación y son estables
-# Blackbox: Claude y modelos de código/diseño muy estables
-# Airforce: Excelente abanico de modelos sin restricciones
-# DuckDuckGo: Ultra rápido para modelos alternativos
+# Providers que funcionan sin autenticación según g4f-working (2024)
+# AnyProvider: Más versátil, soporta GPT-4, Claude, Gemini, DeepSeek
+# Perplexity: Claude 2/3.5/4, GPT-5, modelos thinking
+# Qwen: Modelos Qwen 3.5/3.6/3.7 (excelente para código)
+# WeWordle: GPT-4, GPT-4o, DeepSeek, DeepSeek-R1
+# Pollinations: Modelos OpenAI y Sana
+# HuggingSpace: Modelos Command R
+# Yqcloud: GPT-4
 RECOMMENDED_PROVIDERS = [
-    'Blackbox',
-    'Airforce',
-    'DuckDuckGo',
+    'AnyProvider',
+    'Perplexity',
+    'Qwen',
+    'WeWordle',
+    'Pollinations',
+    'HuggingSpace',
+    'Yqcloud',
 ]
 
 # Providers a IGNORAR (requieren auth, fallan en Render, o tienen problemas)
 IGNORED_PROVIDERS = [
     'DeepSeek',    # Requiere archivos HAR
     'You',         # Requiere cookies y navegador simulado (falla en Render)
-    'Perplexity',  # Connection timeout en IPs de Render (Cloudflare blacklist)
     'Cohere',      # Pide API key
     'Poe',         # Requiere autenticación
     'Phind',       # Inestable
+    'Airforce',    # Pide API key
+    'Blackbox',    # Puede requerir auth en algunos casos
+    'DuckDuckGo',  # Inestable
 ]
 
 # Cargar providers recomendados dinámicamente
