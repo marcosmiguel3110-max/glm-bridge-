@@ -276,6 +276,9 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         'qwen/qwen3.7-plus',
         'Qwen/Qwen3-Coder-30B-A3B-Instruct',
         'gpt-4o-mini',
+        'gpt-4o',
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
         'qwen/qwen-1.5-72b',
         'glm-5.2',  # Requiere suscripción Ollama (error 403)
     ]
@@ -409,6 +412,9 @@ def list_models():
         "deepseek-r1",
         "deepseek-v3",
         "gpt-4o-mini",
+        "gpt-4o",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
         "qwen/qwen-1.5-72b"
     ]
     data = [{"id": m, "object": "model", "owned_by": "g4f-bridge"} for m in modelos]
