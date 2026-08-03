@@ -126,7 +126,7 @@ DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 # ============================================================
 # Providers que funcionan sin autenticación según g4f-working (2024)
 # AnyProvider: Más versátil, soporta GPT-4, Claude, Gemini, DeepSeek
-# Qwen: Modelos Qwen 3.5/3.6/3.7 (excelente para código)
+# Qwen: Modelos Qwen 3.5/3.6/3.7 (excelente para código) - REQUIERE ROTACIÓN DE IPs
 # WeWordle: GPT-4, GPT-4o, DeepSeek, DeepSeek-R1
 # Pollinations: Modelos OpenAI y Sana
 # Yqcloud: GPT-4
@@ -143,6 +143,13 @@ RECOMMENDED_PROVIDERS = [
 CLAUDE_PROVIDERS = [
     'Blackbox',    # Claude y modelos de código/diseño muy estables
 ]
+
+# ============================================================
+# CONFIGURACIÓN DE ROTACIÓN DE IPs PARA QWEN
+# ============================================================
+# Qwen tiene rate limiting por IP, por lo que necesitamos rotar IPs
+# para evitar bloqueos. Usaremos el sistema de proxies existente.
+QWEN_REQUIRES_PROXY_ROTATION = True
 
 # Providers a IGNORAR (requieren auth, fallan en Render, o tienen problemas)
 IGNORED_PROVIDERS = [
@@ -370,6 +377,30 @@ def detectar_tipo_request(messages):
     
     return 'general'
 
+def esPedidoVisual(messages):
+    """Detecta si el request es visual/canvas/juegos/Modo Design (versión mejorada)"""
+    if not messages:
+        return False
+    
+    texto_completo = ' '.join([m.get('content', '') for m in messages]).lower()
+    
+    # Palabras clave para pedidos visuales (más amplio que design)
+    keywords_visual = [
+        'canvas', 'juego', 'game', 'diseño', 'design', 'animación', 'animation',
+        'sprite', 'tile', 'voxel', 'minecraft', 'terraria', 'three.js', 'webgl',
+        'gráfico', 'graphic', 'render', 'shader', 'texture', 'modelo 3d', '3d model',
+        'motor de juego', 'game engine', 'physics', 'colisión', 'collision',
+        'visual', 'imagen', 'image', 'dibujar', 'draw', 'pintar', 'paint',
+        'interfaz', 'interface', 'ui', 'ux', 'layout', 'estilo', 'style',
+        'color', 'forma', 'shape', 'animar', 'animate', 'efecto', 'effect'
+    ]
+    
+    for keyword in keywords_visual:
+        if keyword in texto_completo:
+            return True
+    
+    return False
+
 def llamar_g4f(messages, model, temperature, max_tokens):
     if not g4f_client:
         raise RuntimeError('g4f no esta disponible')
@@ -392,10 +423,38 @@ def llamar_g4f(messages, model, temperature, max_tokens):
 
     # Detectar tipo de request para seleccionar cascada apropiada
     tipo_request = detectar_tipo_request(messages)
-    log.info(f"[Cascada] Tipo de request detectado: {tipo_request}")
+    es_visual = esPedidoVisual(messages)
+    log.info(f"[Cascada] Tipo de request detectado: {tipo_request} | Visual: {es_visual}")
     
     # CASCADA DE MODELOS SEGÚN TIPO DE REQUEST
-    if tipo_request == 'design':
+    if es_visual:
+        # CASCADA MODELOS OPENROUTER CANVAS (para pedidos visuales/canvas/juegos/Modo Design)
+        # qwen/qwen3.6-27b primero, luego gpt-4o, luego cascada de código normal
+        modelos_disponibles = [
+            modelo_a_usar,
+            # Primero: qwen/qwen3.6-27b (especialista en canvas/visuales)
+            'qwen/qwen3.6-27b',
+            # Segundo: gpt-4o (multimodal, bueno para diseño)
+            'gpt-4o',
+            # Tercero: cascada de código normal (especialistas en programación)
+            'glm-5.2',  # Especialista en programación
+            'deepseek-coder',
+            'Qwen/Qwen3-Coder-30B-A3B-Instruct',
+            'kimi-k2.7-code',
+            # Cuarto: modelos de diseño adicionales
+            'claude-3-5-sonnet',
+            'gpt-4-turbo',
+            'claude-3-opus',
+            # Fallback a modelos generales
+            'deepseek-v3',
+            'deepseek-v4-pro',
+            'qwen/qwen3.7-max',
+            'gpt-4o-mini',
+            'qwen/qwen3.7-plus',
+            'deepseek-r1',
+            'qwen/qwen-1.5-72b',
+        ]
+    elif tipo_request == 'design':
         # Cascada para diseño/canvas/juegos (modelos especializados primero)
         modelos_disponibles = [
             modelo_a_usar,
@@ -415,25 +474,28 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             'qwen/qwen3.7-plus',
             'deepseek-r1',
             'qwen/qwen-1.5-72b',
-            'glm-5.2',  # Requiere suscripción Ollama (error 403)
+            'glm-5.2',
         ]
     else:
-        # Cascada general (modelos balanceados)
+        # CASCADA GENERAL (modelos balanceados con glm-5.2 como especialista en código)
         modelos_disponibles = [
             modelo_a_usar,
+            # Especialistas en programación (cascada de código)
+            'glm-5.2',  # Especialista en programación
+            'deepseek-coder',
+            'Qwen/Qwen3-Coder-30B-A3B-Instruct',
             'kimi-k2.7-code',  # Nuevo modelo de coding desde ollama.pro
+            # Modelos generales
             'deepseek-v3',
             'deepseek-v4-pro',
             'deepseek-r1',
             'qwen/qwen3.7-max',
             'qwen/qwen3.7-plus',
-            'Qwen/Qwen3-Coder-30B-A3B-Instruct',
             'gpt-4o-mini',
             'gpt-4o',
             'gemini-1.5-flash',
             'gemini-1.5-pro',
             'qwen/qwen-1.5-72b',
-            'glm-5.2',  # Requiere suscripción Ollama (error 403)
         ]
 
     vistos = set()
@@ -485,9 +547,19 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     ultimo_error = None
     for modelo_actual in modelos_a_probar:
         for provider_actual in providers_a_probar:
-            # Cambio: NO usar proxy por defecto (muchos caídos, causan timeout de 30s)
-            # Solo usar proxy si está explícitamente habilitado por variable de entorno
-            for usar_proxy in [False, True] if PROXY_ROTATION_ENABLED else [False]:
+            # Detectar si es modelo Qwen para forzar rotación de IPs
+            es_qwen = 'qwen' in modelo_actual.lower() or (hasattr(provider_actual, '__name__') and 'qwen' in provider_actual.__name__.lower())
+            
+            # Para Qwen: FORZAR proxy primero (rate limiting por IP)
+            # Para otros: NO usar proxy por defecto (muchos caídos, causan timeout de 30s)
+            if es_qwen and PROXY_ROTATION_ENABLED:
+                proxy_order = [True, False]  # Qwen: proxy primero
+            elif PROXY_ROTATION_ENABLED:
+                proxy_order = [False, True]  # Otros: sin proxy primero
+            else:
+                proxy_order = [False]
+            
+            for usar_proxy in proxy_order:
                 try:
                     provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
                     
@@ -598,6 +670,8 @@ def chat_completions():
 @app.route('/v1/models', methods=['GET'])
 def list_models():
     modelos = [
+        # Modelos especializados en canvas/visuales (OpenRouter Canvas)
+        "qwen/qwen3.6-27b",
         # Modelos especializados en diseño/canvas/juegos
         "claude-3-5-sonnet",
         "claude-3-opus",
