@@ -129,14 +129,13 @@ DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 # Qwen: Modelos Qwen 3.5/3.6/3.7 (excelente para código)
 # WeWordle: GPT-4, GPT-4o, DeepSeek, DeepSeek-R1
 # Pollinations: Modelos OpenAI y Sana
-# HuggingSpace: Modelos Command R
 # Yqcloud: GPT-4
+# HuggingSpace eliminado: Bug interno con modelos desconocidos (NoneType error)
 RECOMMENDED_PROVIDERS = [
     'AnyProvider',
     'Qwen',
     'WeWordle',
     'Pollinations',
-    'HuggingSpace',
     'Yqcloud',
 ]
 
@@ -155,6 +154,7 @@ IGNORED_PROVIDERS = [
     'Perplexity',  # BLOQUEADO en Render (Cloudflare blacklist)
     'DuckDuckGo',  # Inestable
     'Airforce',    # Pide API key
+    'HuggingSpace',  # Bug interno con modelos desconocidos (NoneType error)
 ]
 
 # Cargar providers recomendados dinámicamente
@@ -384,6 +384,11 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             provider_desde_modelo = partes[0]
             modelo_a_usar = partes[1]
             log.info(f'Modelo con provider explicito: provider={provider_desde_modelo} | modelo={modelo_a_usar}')
+    
+    # Corrección: Reemplazar "auto" por un modelo real (Pollinations no acepta "auto")
+    if modelo_a_usar == 'auto' or not modelo_a_usar:
+        modelo_a_usar = DEFAULT_MODEL
+        log.info(f"[Cascada] Modelo 'auto' reemplazado por: {modelo_a_usar}")
 
     # Detectar tipo de request para seleccionar cascada apropiada
     tipo_request = detectar_tipo_request(messages)
@@ -453,7 +458,10 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                 log.info(f"[Cascada] Modelo Claude detectado, usando providers Claude: {[p.__name__ if hasattr(p, '__name__') else str(p) for p in AVAILABLE_CLAUDE_PROVIDERS]}")
                 providers_a_probar.extend(AVAILABLE_CLAUDE_PROVIDERS)
             else:
-                log.warning("[Cascada] No hay providers Claude disponibles, usando providers generales")
+                # Si no hay providers Claude, cambiar a modelo alternativo para evitar timeout
+                log.warning("[Cascada] No hay providers Claude disponibles, cambiando a modelo alternativo")
+                # Reemplazar modelo Claude por deepseek-v3 para evitar timeout con AnyProvider
+                modelo_a_usar = 'deepseek-v3'
                 providers_a_probar.extend(AVAILABLE_PROVIDERS)
         elif tipo_request == 'design':
             # Para diseño/imagen, usar providers especializados
@@ -477,8 +485,9 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     ultimo_error = None
     for modelo_actual in modelos_a_probar:
         for provider_actual in providers_a_probar:
-            # Intentar primero con proxy si está disponible
-            for usar_proxy in [True, False] if PROXY_ROTATION_ENABLED else [False]:
+            # Cambio: NO usar proxy por defecto (muchos caídos, causan timeout de 30s)
+            # Solo usar proxy si está explícitamente habilitado por variable de entorno
+            for usar_proxy in [False, True] if PROXY_ROTATION_ENABLED else [False]:
                 try:
                     provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
                     
