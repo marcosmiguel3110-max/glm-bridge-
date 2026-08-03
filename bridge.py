@@ -1,6 +1,6 @@
 """
-Puente GPT4Free — Modelo dinámico (glm-5.2, qwen, deepseek) SIN API KEY
-Con rotación de IPs vía proxies gratuitos
+Puente GPT4Free — Modelo dinámico (glm-5.2, qwen, deepseek) CON API KEY
+Con rotación de IPs vía proxies gratuitos y rotación de keys de G4F
 ==========================================================================
 """
 
@@ -11,12 +11,30 @@ import random
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import g4f
+from g4f_key_manager import G4FKeyManager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
+
+# ============================================================
+# CONFIGURACIÓN GESTOR DE KEYS DE G4F
+# ============================================================
+# Inicializar gestor de keys para rotación automática
+g4f_key_manager = G4FKeyManager()
+
+# Estado global de keys (mutable para poder modificar en funciones)
+g4f_keys_state = {
+    'current_key': os.getenv('G4F_API_KEY') or g4f_key_manager.obtener_key_activa(),
+    'rotation_enabled': True
+}
+
+if g4f_keys_state['current_key']:
+    log.info(f"[Keys] Key de G4F configurada: {g4f_keys_state['current_key'][:20]}...")
+else:
+    log.warning("[Keys] No hay key de G4F configurada, usando modo sin key")
 
 # ============================================================
 # CONFIGURACIÓN PROXIES GRATUITOS (ROTACIÓN DE IPs)
@@ -125,14 +143,13 @@ DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 # CONFIGURACIÓN PROVIDERS RECOMENDADOS (100% GRATUITOS, SIN AUTH)
 # ============================================================
 # Providers que funcionan sin autenticación según g4f-working (2024)
-# AnyProvider: Más versátil, soporta GPT-4, Claude, Gemini, DeepSeek
+# AnyProvider ELIMINADO: Bloqueado por límite de 3 días (Error 429)
 # Qwen: Modelos Qwen 3.5/3.6/3.7 (excelente para código) - REQUIERE ROTACIÓN DE IPs
 # WeWordle: GPT-4, GPT-4o, DeepSeek, DeepSeek-R1
 # Pollinations: Modelos OpenAI y Sana
 # Yqcloud: GPT-4
 # HuggingSpace eliminado: Bug interno con modelos desconocidos (NoneType error)
 RECOMMENDED_PROVIDERS = [
-    'AnyProvider',
     'Qwen',
     'WeWordle',
     'Pollinations',
@@ -579,6 +596,9 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                         kwargs['provider'] = provider_actual
                     if proxy_config:
                         kwargs['proxies'] = proxy_config
+                    # Usar key de G4F si está disponible
+                    if g4f_keys_state['current_key']:
+                        kwargs['api_key'] = g4f_keys_state['current_key']
                     
                     # Activar streaming para evitar timeout de 120s de Render
                     kwargs['stream'] = True
@@ -605,6 +625,29 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                 except Exception as e:
                     provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
                     error_msg = f'{modelo_actual}/{provider_name}: {e}'
+                    
+                    # Detectar errores de key expirada o sin tokens
+                    error_str = str(e).lower()
+                    if '401' in error_str or 'unauthorized' in error_str or 'invalid api key' in error_str:
+                        log.error(f'[Keys] Key de G4F expirada o inválida: {g4f_keys_state["current_key"][:20] if g4f_keys_state["current_key"] else "N/A"}...')
+                        if g4f_keys_state['current_key']:
+                            g4f_key_manager.marcar_key_expirada(g4f_keys_state['current_key'])
+                            # Intentar obtener nueva key
+                            nueva_key = g4f_key_manager.obtener_key_activa()
+                            if nueva_key:
+                                g4f_keys_state['current_key'] = nueva_key
+                                log.info(f'[Keys] Rotando a nueva key: {g4f_keys_state["current_key"][:20]}...')
+                                continue  # Reintentar con nueva key
+                    elif '429' in error_str or 'rate limit' in error_str or 'quota' in error_str:
+                        log.error(f'[Keys] Key de G4F sin tokens o rate limit: {g4f_keys_state["current_key"][:20] if g4f_keys_state["current_key"] else "N/A"}...')
+                        if g4f_keys_state['current_key']:
+                            g4f_key_manager.marcar_key_expirada(g4f_keys_state['current_key'])
+                            # Intentar obtener nueva key
+                            nueva_key = g4f_key_manager.obtener_key_activa()
+                            if nueva_key:
+                                g4f_keys_state['current_key'] = nueva_key
+                                log.info(f'[Keys] Rotando a nueva key: {g4f_keys_state["current_key"][:20]}...')
+                                continue  # Reintentar con nueva key
                     
                     if usar_proxy and PROXY_LIST:
                         log.warning(f'Fallo con proxy, reintentando sin proxy: {error_msg}')
