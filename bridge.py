@@ -164,6 +164,29 @@ try:
     
     g4f_client = Client(**client_kwargs)
     
+    # CONFIGURACIÓN DE DEEPSEEK CON ARCHIVOS HAR
+    # DeepSeek ahora requiere autenticación mediante archivos HAR exportados del navegador
+    try:
+        import os
+        har_dir = os.path.join(os.path.dirname(__file__), 'har_and_cookies')
+        if os.path.exists(har_dir):
+            har_files = [f for f in os.listdir(har_dir) if f.endswith('.har')]
+            if har_files:
+                har_path = os.path.join(har_dir, har_files[0])
+                # Configurar g4f para usar el archivo HAR de DeepSeek
+                if hasattr(g4f.Provider, 'DeepSeek'):
+                    try:
+                        g4f.Provider.DeepSeek.har_file = har_path
+                        log.info(f"[DeepSeek] Archivo HAR configurado: {har_files[0]}")
+                    except Exception as e:
+                        log.warning(f"[DeepSeek] No se pudo configurar HAR: {e}")
+            else:
+                log.info("[DeepSeek] No se encontraron archivos HAR en har_and_cookies/ - el provider usará modo gratuito limitado")
+        else:
+            log.info("[DeepSeek] Directorio har_and_cookies/ no encontrado - el provider usará modo gratuito limitado")
+    except Exception as e_deepseek:
+        log.warning(f"[DeepSeek] Error configurando soporte HAR: {e_deepseek}")
+    
     # CONFIGURACIÓN DE OLLAMA: Le inyectamos servidores públicos gratuitos para no usar API Key
     try:
         if hasattr(g4f, 'Provider') and hasattr(g4f.Provider, 'Ollama'):

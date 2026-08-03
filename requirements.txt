@@ -4,4 +4,6 @@ g4f
 curl_cffi
 aiohttp_socks
 websocket-client
+zendriver
+platformdirs
 requests
