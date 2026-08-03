@@ -126,7 +126,6 @@ DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 # ============================================================
 # Providers que funcionan sin autenticación según g4f-working (2024)
 # AnyProvider: Más versátil, soporta GPT-4, Claude, Gemini, DeepSeek
-# Perplexity: Claude 2/3.5/4, GPT-5, modelos thinking
 # Qwen: Modelos Qwen 3.5/3.6/3.7 (excelente para código)
 # WeWordle: GPT-4, GPT-4o, DeepSeek, DeepSeek-R1
 # Pollinations: Modelos OpenAI y Sana
@@ -134,12 +133,17 @@ DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 # Yqcloud: GPT-4
 RECOMMENDED_PROVIDERS = [
     'AnyProvider',
-    'Perplexity',
     'Qwen',
     'WeWordle',
     'Pollinations',
     'HuggingSpace',
     'Yqcloud',
+]
+
+# Providers específicos para Claude (si están disponibles)
+CLAUDE_PROVIDERS = [
+    'Blackbox',    # Claude y modelos de código/diseño muy estables
+    'Airforce',    # Excelente abanico de modelos sin restricciones
 ]
 
 # Providers a IGNORAR (requieren auth, fallan en Render, o tienen problemas)
@@ -149,8 +153,7 @@ IGNORED_PROVIDERS = [
     'Cohere',      # Pide API key
     'Poe',         # Requiere autenticación
     'Phind',       # Inestable
-    'Airforce',    # Pide API key
-    'Blackbox',    # Puede requerir auth en algunos casos
+    'Perplexity',  # BLOQUEADO en Render (Cloudflare blacklist)
     'DuckDuckGo',  # Inestable
 ]
 
@@ -165,6 +168,17 @@ for provider_name in RECOMMENDED_PROVIDERS:
     except Exception as e:
         log.warning(f"[Providers] No se pudo cargar provider {provider_name}: {e}")
 
+# Cargar providers específicos para Claude dinámicamente
+AVAILABLE_CLAUDE_PROVIDERS = []
+for provider_name in CLAUDE_PROVIDERS:
+    try:
+        if hasattr(g4f.Provider, provider_name):
+            provider_class = getattr(g4f.Provider, provider_name)
+            AVAILABLE_CLAUDE_PROVIDERS.append(provider_class)
+            log.info(f"[Providers] Provider Claude cargado: {provider_name}")
+    except Exception as e:
+        log.warning(f"[Providers] No se pudo cargar provider Claude {provider_name}: {e}")
+
 # Cargar providers ignorados para configuración de ignored_providers
 IGNORED_PROVIDER_CLASSES = []
 for provider_name in IGNORED_PROVIDERS:
@@ -176,7 +190,7 @@ for provider_name in IGNORED_PROVIDERS:
     except Exception as e:
         log.warning(f"[Providers] No se pudo configurar provider ignorado {provider_name}: {e}")
 
-log.info(f"[Providers] Total providers activos: {len(AVAILABLE_PROVIDERS)} | Ignorados: {len(IGNORED_PROVIDER_CLASSES)}")
+log.info(f"[Providers] Total providers activos: {len(AVAILABLE_PROVIDERS)} | Claude: {len(AVAILABLE_CLAUDE_PROVIDERS)} | Ignorados: {len(IGNORED_PROVIDER_CLASSES)}")
 
 g4f_client = None
 try:
@@ -424,18 +438,40 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelos_a_probar.append(m)
             vistos.add(m)
 
-    # FORZAMOS PROVEEDORES: usar solo providers recomendados (sin auto)
+    # FORZAMOS PROVEEDORES: mapeo dinámico según modelo (solución al timeout)
     if provider_desde_modelo:
         providers_a_probar = [provider_desde_modelo]
     else:
         providers_a_probar = []
         
-        # Usar providers recomendados (Blackbox, Airforce, DuckDuckGo)
-        if AVAILABLE_PROVIDERS:
-            log.info(f"[Cascada] Usando providers recomendados: {[p.__name__ if hasattr(p, '__name__') else str(p) for p in AVAILABLE_PROVIDERS]}")
-            providers_a_probar.extend(AVAILABLE_PROVIDERS)
+        # Mapeo dinámico según el modelo pedido
+        modelo_lower = modelo_a_usar.lower()
+        
+        if 'claude' in modelo_lower:
+            # Usar providers específicos para Claude
+            if AVAILABLE_CLAUDE_PROVIDERS:
+                log.info(f"[Cascada] Modelo Claude detectado, usando providers Claude: {[p.__name__ if hasattr(p, '__name__') else str(p) for p in AVAILABLE_CLAUDE_PROVIDERS]}")
+                providers_a_probar.extend(AVAILABLE_CLAUDE_PROVIDERS)
+            else:
+                log.warning("[Cascada] No hay providers Claude disponibles, usando providers generales")
+                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+        elif tipo_request == 'design':
+            # Para diseño/imagen, usar providers especializados
+            providers_design = [p for p in AVAILABLE_PROVIDERS if 'Pollinations' in str(p) or 'HuggingSpace' in str(p)]
+            if providers_design:
+                log.info(f"[Cascada] Request de diseño, usando providers especializados")
+                providers_a_probar.extend(providers_design)
+            else:
+                providers_a_probar.extend(AVAILABLE_PROVIDERS)
         else:
-            log.warning("[Cascada] No hay providers recomendados disponibles, usando Ollama como fallback")
+            # Para modelos generales, usar lista recomendada
+            if AVAILABLE_PROVIDERS:
+                log.info(f"[Cascada] Usando providers generales: {[p.__name__ if hasattr(p, '__name__') else str(p) for p in AVAILABLE_PROVIDERS]}")
+                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+        
+        # Fallback a Ollama si no hay providers disponibles
+        if not providers_a_probar:
+            log.warning("[Cascada] No hay providers disponibles, usando Ollama como fallback")
             providers_a_probar.append(g4f.Provider.Ollama)
 
     ultimo_error = None
@@ -462,9 +498,19 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                         kwargs['provider'] = provider_actual
                     if proxy_config:
                         kwargs['proxies'] = proxy_config
+                    
+                    # Activar streaming para evitar timeout de 120s de Render
+                    kwargs['stream'] = True
 
                     response = g4f_client.chat.completions.create(**kwargs)
-                    content = response.choices[0].message.content
+                    
+                    # Manejar respuesta streaming
+                    content = ''
+                    for chunk in response:
+                        if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
+                            delta = chunk.choices[0].delta
+                            if hasattr(delta, 'content') and delta.content:
+                                content += delta.content
 
                     if content and content.strip():
                         content = strip_think_tags(content)
