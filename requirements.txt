@@ -2,4 +2,6 @@ flask
 flask-cors
 g4f
 curl_cffi
+aiohttp_socks
+websocket-client
 requests
