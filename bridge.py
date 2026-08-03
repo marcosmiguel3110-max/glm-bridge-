@@ -122,31 +122,51 @@ DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'deepseek-v3')
 DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 
 # ============================================================
-# CONFIGURACIÓN SCRAPING AVANZADO (PROVIDERS QUE USAN WEB SCRAPING)
+# CONFIGURACIÓN PROVIDERS RECOMENDADOS (100% GRATUITOS, SIN AUTH)
 # ============================================================
-# Providers que usan scraping web en lugar de API (más robustos)
-SCRAPING_PROVIDERS = [
-    'DeepSeek',
-    'Poe',
-    'You',
-    'Perplexity',
-    'Phind',
+# Providers que funcionan sin autenticación y son estables
+# Blackbox: Claude y modelos de código/diseño muy estables
+# Airforce: Excelente abanico de modelos sin restricciones
+# DuckDuckGo: Ultra rápido para modelos alternativos
+RECOMMENDED_PROVIDERS = [
     'Blackbox',
-    'Cohere',
+    'Airforce',
+    'DuckDuckGo',
 ]
 
-# Intentar obtener providers de g4f dinámicamente
-AVAILABLE_SCRAPING_PROVIDERS = []
-for provider_name in SCRAPING_PROVIDERS:
+# Providers a IGNORAR (requieren auth, fallan en Render, o tienen problemas)
+IGNORED_PROVIDERS = [
+    'DeepSeek',    # Requiere archivos HAR
+    'You',         # Requiere cookies y navegador simulado (falla en Render)
+    'Perplexity',  # Connection timeout en IPs de Render (Cloudflare blacklist)
+    'Cohere',      # Pide API key
+    'Poe',         # Requiere autenticación
+    'Phind',       # Inestable
+]
+
+# Cargar providers recomendados dinámicamente
+AVAILABLE_PROVIDERS = []
+for provider_name in RECOMMENDED_PROVIDERS:
     try:
         if hasattr(g4f.Provider, provider_name):
             provider_class = getattr(g4f.Provider, provider_name)
-            AVAILABLE_SCRAPING_PROVIDERS.append(provider_class)
-            log.info(f"[Scraping] Provider disponible: {provider_name}")
+            AVAILABLE_PROVIDERS.append(provider_class)
+            log.info(f"[Providers] Provider recomendado cargado: {provider_name}")
     except Exception as e:
-        log.warning(f"[Scraping] No se pudo cargar provider {provider_name}: {e}")
+        log.warning(f"[Providers] No se pudo cargar provider {provider_name}: {e}")
 
-log.info(f"[Scraping] Total providers de scraping disponibles: {len(AVAILABLE_SCRAPING_PROVIDERS)}")
+# Cargar providers ignorados para configuración de ignored_providers
+IGNORED_PROVIDER_CLASSES = []
+for provider_name in IGNORED_PROVIDERS:
+    try:
+        if hasattr(g4f.Provider, provider_name):
+            provider_class = getattr(g4f.Provider, provider_name)
+            IGNORED_PROVIDER_CLASSES.append(provider_class)
+            log.info(f"[Providers] Provider ignorado configurado: {provider_name}")
+    except Exception as e:
+        log.warning(f"[Providers] No se pudo configurar provider ignorado {provider_name}: {e}")
+
+log.info(f"[Providers] Total providers activos: {len(AVAILABLE_PROVIDERS)} | Ignorados: {len(IGNORED_PROVIDER_CLASSES)}")
 
 g4f_client = None
 try:
@@ -394,23 +414,19 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             modelos_a_probar.append(m)
             vistos.add(m)
 
-    # FORZAMOS PROVEEDORES: cascada inteligente con scraping primero
+    # FORZAMOS PROVEEDORES: usar solo providers recomendados (sin auto)
     if provider_desde_modelo:
         providers_a_probar = [provider_desde_modelo]
     else:
-        providers_a_probar = [DEFAULT_PROVIDER] if DEFAULT_PROVIDER else []
+        providers_a_probar = []
         
-        # Para requests de diseño, priorizar providers de scraping
-        if tipo_request == 'design' and AVAILABLE_SCRAPING_PROVIDERS:
-            log.info(f"[Cascada] Usando providers de scraping para diseño")
-            for provider in AVAILABLE_SCRAPING_PROVIDERS:
-                if provider not in providers_a_probar:
-                    providers_a_probar.append(provider)
-        
-        # Auto y Ollama como fallback
-        for p in ['', g4f.Provider.Ollama]:
-            if p not in providers_a_probar:
-                providers_a_probar.append(p)
+        # Usar providers recomendados (Blackbox, Airforce, DuckDuckGo)
+        if AVAILABLE_PROVIDERS:
+            log.info(f"[Cascada] Usando providers recomendados: {[p.__name__ if hasattr(p, '__name__') else str(p) for p in AVAILABLE_PROVIDERS]}")
+            providers_a_probar.extend(AVAILABLE_PROVIDERS)
+        else:
+            log.warning("[Cascada] No hay providers recomendados disponibles, usando Ollama como fallback")
+            providers_a_probar.append(g4f.Provider.Ollama)
 
     ultimo_error = None
     for modelo_actual in modelos_a_probar:
@@ -430,6 +446,7 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                         'messages': messages_reforzados,
                         'temperature': temperature,
                         'max_tokens': max_tokens,
+                        'ignored_providers': IGNORED_PROVIDER_CLASSES,  # Ignorar providers problemáticos
                     }
                     if provider_actual:
                         kwargs['provider'] = provider_actual
