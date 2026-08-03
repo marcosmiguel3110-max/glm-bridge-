@@ -1,10 +1,11 @@
-# Puente GPT4Free — gpt-4o-mini (SIN API KEY)
+# Puente GPT4Free — kimi-k2.7-code (SIN API KEY)
 
-Puente Python/Flask que expone `POST /v1/chat/completions` (formato OpenAI) y llama a **gpt-4o-mini** gratis usando la librería `g4f` (https://github.com/xtekky/gpt4free). **No requiere token, no requiere registro, no requiere API key.**
+Puente Python/Flask que expone `POST /v1/chat/completions` (formato OpenAI) y llama a **kimi-k2.7-code** y otros modelos gratis usando la librería `g4f` (https://github.com/xtekky/gpt4free). **No requiere token, no requiere registro, no requiere API key.**
 
 ## Modelo por defecto
-- **Modelo**: `glm-5.2`, `qwen/qwen3.7-plus`, `deepseek-v4-pro` (rotación automática)
-- **Provider**: Ollama (para glm-5.2) con fallback a auto
+- **Modelo**: `kimi-k2.7-code`, `deepseek-v3`, `deepseek-v4-pro`, `glm-5.2` (rotación automática)
+- **Provider**: Ollama (para kimi-k2.7-code y glm-5.2) con fallback a auto
+- **Servidores Ollama**: `https://ollama.pro/api`, `https://ai.devs503.tech/api`, `https://ollama.com/v1`, `https://api.pawan.krd/v1`
 - **Identidad**: Fuertemente reforzada — el modelo SIEMPRE se presenta como "NewserPro de Verbo AI"
 - **Fallbacks**: Si el modelo principal falla, prueba automáticamente otros modelos disponibles
 

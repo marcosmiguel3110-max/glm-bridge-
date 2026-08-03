@@ -142,11 +142,12 @@ try:
         if hasattr(g4f, 'Provider') and hasattr(g4f.Provider, 'Ollama'):
             # Lista de servidores Ollama públicos compartidos por la comunidad
             g4f.Provider.Ollama.api_base = [
+                "https://ollama.pro/api",  # Kimi-k2.7-code disponible aquí
                 "https://ai.devs503.tech/api",
                 "https://ollama.com/v1",
                 "https://api.pawan.krd/v1"
             ]
-            log.info("Servidores públicos de Ollama configurados correctamente.")
+            log.info("Servidores públicos de Ollama configurados correctamente (incluyendo ollama.pro para kimi-k2.7-code).")
     except Exception as e_ollama:
         log.warning(f"No se pudo configurar Ollama: {e_ollama}")
 
@@ -267,6 +268,7 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     # Lista de modelos disponibles (glm-5.2 requiere suscripción Ollama, movido al final)
     modelos_disponibles = [
         modelo_a_usar,
+        'kimi-k2.7-code',  # Nuevo modelo de coding desde ollama.pro
         'deepseek-v3',
         'deepseek-v4-pro',
         'deepseek-r1',
@@ -398,6 +400,7 @@ def chat_completions():
 @app.route('/v1/models', methods=['GET'])
 def list_models():
     modelos = [
+        "kimi-k2.7-code",
         "glm-5.2",
         "qwen/qwen3.7-max",
         "qwen/qwen3.7-plus",
