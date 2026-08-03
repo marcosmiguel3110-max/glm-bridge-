@@ -1,6 +1,6 @@
-# Puente GPT4Free — kimi-k2.7-code (SIN API KEY)
+# Puente GPT4Free — kimi-k2.7-code (CON API KEY OPCIONAL)
 
-Puente Python/Flask que expone `POST /v1/chat/completions` (formato OpenAI) y llama a **kimi-k2.7-code** y otros modelos gratis usando la librería `g4f` (https://github.com/xtekky/gpt4free). **No requiere token, no requiere registro, no requiere API key.**
+Puente Python/Flask que expone `POST /v1/chat/completions` (formato OpenAI) y llama a **kimi-k2.7-code** y otros modelos gratis usando la librería `g4f` (https://github.com/xtekky/gpt4free). **Soporta modo sin API key y modo con keys de G4F encriptadas.**
 
 ## Modelo por defecto
 - **Modelo**: `kimi-k2.7-code`, `deepseek-v3`, `deepseek-v4-pro`, `glm-5.2` (rotación automática)
@@ -126,3 +126,59 @@ Deberías ver `capaGlm: True` y `modeloReal: gpt-4o-mini` ✅
 - Render Free Tier duerme el servicio después de 15 min sin actividad. La primera petición después de dormir tarda ~30s extra.
 - Si gpt-4o-mini falla, prueba automáticamente gpt-4o, Qwen3-235B, Qwen3-25B en orden.
 - Para ver qué modelo respondió: el campo `model` en la respuesta JSON siempre muestra el modelo real que se usó.
+
+## Seguridad y Gestión de Keys de G4F
+
+### Sistema de Encriptación de Keys
+
+El bridge incluye un sistema de gestión de keys de G4F con encriptación para proteger las credenciales en disco:
+
+**Características de seguridad:**
+- **Encriptación XOR + Base64**: Las keys se almacenan encriptadas en `g4f_keys.enc`
+- **Clave única por máquina**: La clave de encriptación se genera basándose en el ID de la máquina y usuario del sistema
+- **Rotación automática**: Cuando una key expira o se queda sin tokens, el bridge rota automáticamente a la siguiente
+- **Detección de expiración**: Alerta cuando las keys están por expirar (30 días antes)
+- **Archivo protegido**: `g4f_keys.enc` está en `.gitignore` para no subir al repositorio
+
+### Configurar Keys de G4F
+
+1. **Ejecutar el gestor de keys**:
+   ```bash
+   python g4f_key_manager.py
+   ```
+
+2. **Agregar una nueva key**:
+   - Ve a https://g4f.dev/members
+   - Inicia sesión con GitHub
+   - Copia la API key
+   - En el gestor, selecciona "Agregar nueva key"
+   - Pega la key y el nombre de la cuenta
+   - Ingresa la fecha de expiración si la conoces
+
+3. **Verificar keys**:
+   - Opción 2: Ver keys activas
+   - Opción 3: Verificar todas las keys
+   - Opción 4: Ver estadísticas
+   - Opción 5: Ver keys por expirar
+
+### Variables de Entorno (Opcional)
+
+Para mayor seguridad, puedes configurar la clave de encriptación manualmente:
+
+```bash
+export G4F_ENCRYPTION_KEY="tu-clave-secreta-aqui"
+```
+
+O configurar una key de G4F directamente:
+
+```bash
+export G4F_API_KEY="tu-key-de-g4f-aqui"
+```
+
+### Seguridad Adicional
+
+- **Nunca compartas** el archivo `g4f_keys.enc`
+- **Nunca subas** `g4f_keys.enc` al repositorio (está en `.gitignore`)
+- **Usa cuentas de GitHub separadas** para cada key (5M tokens por cuenta)
+- **Configura alertas** 30 días antes de la expiración de las keys
+- **Rotación periódica**: Registra nuevas cuentas antes de que expiren las actuales

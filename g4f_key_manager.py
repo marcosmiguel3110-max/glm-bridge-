@@ -2,6 +2,7 @@
 """
 Gestor de Keys de G4F
 Sistema para rotar múltiples keys de G4F y detectar expiración
+CON ENCRIPTACIÓN SIMPLE PARA PROTEGER LAS KEYS EN DISCO
 """
 
 import os
@@ -10,28 +11,100 @@ import time
 import requests
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
+import base64
+import hashlib
 
-# Archivo de configuración de keys
-KEYS_FILE = os.path.join(os.path.dirname(__file__), 'g4f_keys.json')
+# Archivo de configuración de keys (encriptado)
+KEYS_FILE = os.path.join(os.path.dirname(__file__), 'g4f_keys.enc')
+KEYS_FILE_JSON = os.path.join(os.path.dirname(__file__), 'g4f_keys.json')  # Versión sin encriptar (para migración)
 
 # URL de G4F para verificar key
 G4F_API_URL = "https://g4f.space/v1/chat/completions"
 
 class G4FKeyManager:
     def __init__(self):
+        self.encryption_key = self._get_or_create_encryption_key()
         self.keys = self.cargar_keys()
     
+    def _get_or_create_encryption_key(self) -> str:
+        """Obtener o crear clave de encriptación basada en el sistema"""
+        # Usar una combinación de MACHINE_GUID y usuario del sistema
+        # Esto hace que la clave sea única para cada máquina
+        try:
+            import uuid
+            machine_id = str(uuid.getnode())
+            username = os.getenv('USERNAME', os.getenv('USER', 'default'))
+            salt = 'g4f-key-manager-salt-2024'
+            
+            # Crear clave de encriptación XOR
+            key_material = f"{machine_id}-{username}-{salt}"
+            key_hash = hashlib.sha256(key_material.encode()).hexdigest()
+            return key_hash
+        except Exception as e:
+            # Fallback: usar clave de entorno
+            env_key = os.getenv('G4F_ENCRYPTION_KEY')
+            if env_key:
+                return env_key
+            # Clave de fallback (no recomendado para producción)
+            return 'default-fallback-key-please-set-G4F_ENCRYPTION_KEY'
+    
+    def _encriptar_datos(self, datos: str) -> str:
+        """Encriptar datos usando XOR + base64"""
+        key = self.encryption_key
+        encriptado = []
+        for i, char in enumerate(datos):
+            key_char = key[i % len(key)]
+            encriptado.append(chr(ord(char) ^ ord(key_char)))
+        encriptado_str = ''.join(encriptado)
+        return base64.b64encode(encriptado_str.encode()).decode()
+    
+    def _desencriptar_datos(self, datos_encriptados: str) -> str:
+        """Desencriptar datos usando XOR + base64"""
+        key = self.encryption_key
+        datos = base64.b64decode(datos_encriptados).decode()
+        desencriptado = []
+        for i, char in enumerate(datos):
+            key_char = key[i % len(key)]
+            desencriptado.append(chr(ord(char) ^ ord(key_char)))
+        return ''.join(desencriptado)
+    
     def cargar_keys(self) -> List[Dict]:
-        """Cargar keys desde archivo JSON"""
+        """Cargar keys desde archivo encriptado"""
+        # Primero intentar migrar del archivo JSON sin encriptar
+        if os.path.exists(KEYS_FILE_JSON) and not os.path.exists(KEYS_FILE):
+            print("[Migración] Detectado archivo JSON sin encriptar, migrando a formato encriptado...")
+            try:
+                with open(KEYS_FILE_JSON, 'r') as f:
+                    keys = json.load(f)
+                self.guardar_keys(keys)
+                os.remove(KEYS_FILE_JSON)
+                print("[Migración] Migración completada, archivo JSON eliminado")
+                return keys
+            except Exception as e:
+                print(f"[Migración] Error migrando archivo: {e}")
+        
+        # Cargar desde archivo encriptado
         if os.path.exists(KEYS_FILE):
-            with open(KEYS_FILE, 'r') as f:
-                return json.load(f)
+            try:
+                with open(KEYS_FILE, 'r') as f:
+                    datos_encriptados = f.read()
+                datos_json = self._desencriptar_datos(datos_encriptados)
+                return json.loads(datos_json)
+            except Exception as e:
+                print(f"[Error] No se pudo desencriptar el archivo de keys: {e}")
+                print("[Error] El archivo puede estar corrupto o la clave de encriptación cambió")
+                return []
+        
         return []
     
-    def guardar_keys(self):
-        """Guardar keys en archivo JSON"""
+    def guardar_keys(self, keys=None):
+        """Guardar keys en archivo encriptado"""
+        if keys is None:
+            keys = self.keys
+        datos_json = json.dumps(keys, indent=2)
+        datos_encriptados = self._encriptar_datos(datos_json)
         with open(KEYS_FILE, 'w') as f:
-            json.dump(self.keys, f, indent=2)
+            f.write(datos_encriptados)
     
     def agregar_key(self, key: str, cuenta: str = "manual", fecha_expiracion: str = None):
         """Agregar una nueva key"""
