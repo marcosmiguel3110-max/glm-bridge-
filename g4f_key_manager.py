@@ -75,34 +75,53 @@ class G4FKeyManager:
             desencriptado.append(chr(ord(char) ^ ord(key_char)))
         return ''.join(desencriptado)
     
+    def _cargar_keys_desde_env(self) -> List[Dict]:
+        """Cargar keys desde variables de entorno G4F_KEYS_JSON1, G4F_KEYS_JSON2, etc."""
+        keys = []
+        
+        # Buscar variables de entorno G4F_KEYS_JSON1, G4F_KEYS_JSON2, etc.
+        for i in range(1, 10):  # Soportar hasta 10 keys
+            env_key = f'G4F_KEYS_JSON{i}'
+            env_value = os.getenv(env_key)
+            
+            if env_value:
+                try:
+                    key_data = json.loads(env_value)
+                    if isinstance(key_data, dict):
+                        keys.append(key_data)
+                except json.JSONDecodeError:
+                    print(f"[Error] Formato inválido en {env_key}")
+        
+        return keys if keys else None
+    
     def cargar_keys(self) -> List[Dict]:
-        """Cargar keys desde archivo encriptado"""
-        # Primero intentar migrar del archivo JSON sin encriptar
-        if os.path.exists(KEYS_FILE_JSON) and not os.path.exists(KEYS_FILE):
-            print("[Migración] Detectado archivo JSON sin encriptar, migrando a formato encriptado...")
-            try:
-                with open(KEYS_FILE_JSON, 'r') as f:
-                    keys = json.load(f)
-                self.guardar_keys(keys)
-                os.remove(KEYS_FILE_JSON)
-                print("[Migración] Migración completada, archivo JSON eliminado")
-                return keys
-            except Exception as e:
-                print(f"[Migración] Error migrando archivo: {e}")
+        """Cargar keys desde archivo encriptado o variables de entorno"""
+        # Primero intentar cargar desde variables de entorno
+        keys_from_env = self._cargar_keys_desde_env()
+        if keys_from_env:
+            return keys_from_env
         
-        # Cargar desde archivo encriptado
-        if os.path.exists(KEYS_FILE):
-            try:
-                with open(KEYS_FILE, 'r') as f:
-                    datos_encriptados = f.read()
-                datos_json = self._desencriptar_datos(datos_encriptados)
-                return json.loads(datos_json)
-            except Exception as e:
-                print(f"[Error] No se pudo desencriptar el archivo de keys: {e}")
-                print("[Error] El archivo puede estar corrupto o la clave de encriptación cambió")
+        # Si no hay variables de entorno, intentar desde archivo encriptado
+        if not os.path.exists(KEYS_FILE) and os.path.exists(KEYS_FILE_JSON):
+            self._migrar_a_encriptado()
+        
+        if not os.path.exists(KEYS_FILE):
+            # Crear archivo vacío
+            self.guardar_keys([])
+            return []
+        
+        try:
+            with open(KEYS_FILE, 'r', encoding='utf-8') as f:
+                contenido = f.read()
+            
+            if not contenido:
                 return []
-        
-        return []
+            
+            datos = self._desencriptar_datos(contenido)
+            return json.loads(datos)
+        except Exception as e:
+            print(f"[Error] Cargando keys: {e}")
+            return []
     
     def guardar_keys(self, keys=None):
         """Guardar keys en archivo encriptado"""
