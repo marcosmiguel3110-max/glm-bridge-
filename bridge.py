@@ -242,9 +242,10 @@ try:
         }
         log.info(f"[Proxies] Client g4f configurado con proxy por defecto")
     
-    # Configurar timeout más corto para evitar bloqueos largos (30s en lugar de 120s)
+    # Configurar timeout muy corto para evitar bloqueos largos (15s en lugar de 120s)
     # Esto permite que la cascada de modelos falle más rápido y pase al siguiente
-    client_kwargs['timeout'] = 30
+    # Algunos providers como Nvidia tienen timeouts internos de 120s que no podemos controlar
+    client_kwargs['timeout'] = 15
     
     g4f_client = Client(**client_kwargs)
     
