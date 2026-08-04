@@ -50,7 +50,7 @@ else:
 # current_model_index: índice del modelo actual en el plan
 # plan_models: lista de modelos en el plan en orden de ejecución
 model_activation_state = {
-    'plan_mode': False,  # Por defecto desactivado (funcionamiento normal)
+    'plan_mode': True,  # Por defecto en modo planificación (modelos desactivados)
     'current_model_index': 0,
     'plan_models': [],  # Se llena cuando se inicia el plan
     'plan_complete': False
@@ -256,8 +256,8 @@ try:
         }
         log.info(f"[Proxies] Client g4f configurado con proxy por defecto")
     
-    # Configurar timeout de 60s para dar tiempo a providers específicos (Nvidia, OpenCodeZen, CommunityDay)
-    client_kwargs['timeout'] = 60
+    # Configurar timeout de 120s para dar tiempo a providers específicos (Nvidia, OpenCodeZen, CommunityDay)
+    client_kwargs['timeout'] = 120
     
     g4f_client = Client(**client_kwargs)
     
@@ -545,8 +545,12 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         
         if 'z-ai/glm-5.2' in modelo_lower or 'glm-5.2' in modelo_lower:
             if hasattr(g4f.Provider, 'Nvidia'):
-                providers_para_modelo = [g4f.Provider.Nvidia]
-                log.info(f"[Cascada] Modelo {modelo_actual} usando provider Nvidia")
+                # Usar proxy alternativo de g4f para Nvidia (sin API key)
+                nvidia_provider = g4f.Provider.Nvidia
+                if hasattr(nvidia_provider, 'base_url'):
+                    nvidia_provider.base_url = "https://g4f.dev/api/nvidia"
+                providers_para_modelo = [nvidia_provider]
+                log.info(f"[Cascada] Modelo {modelo_actual} usando provider Nvidia (proxy g4f.dev)")
         elif 'north-mini-code-free' in modelo_lower:
             if hasattr(g4f.Provider, 'OpenCodeZen'):
                 providers_para_modelo = [g4f.Provider.OpenCodeZen]
