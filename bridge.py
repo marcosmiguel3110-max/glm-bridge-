@@ -141,8 +141,8 @@ PROXY_ROTATION_ENABLED = len(PROXY_LIST) > 0
 
 log.info(f"[Proxies] Rotación de IPs: {'habilitada' if PROXY_ROTATION_ENABLED else 'deshabilitada'} | {len(PROXY_LIST)} proxies disponibles")
 
-# Modelo por defecto (cambiado a modelo que funciona gratis)
-DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'deepseek-v3')
+# Modelo por defecto (usar z-ai/glm-5.2 desde Nvidia)
+DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'z-ai/glm-5.2')
 DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 
 # ============================================================
@@ -480,7 +480,6 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             'gpt-4-turbo',
             'claude-3-opus',
             # Fallback a modelos generales
-            'deepseek-v3',
             'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
             'qwen/qwen3.7-max',
             'gpt-4o-mini',
@@ -504,7 +503,6 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             'gpt-4-turbo',  # Bueno para diseño
             'claude-3-opus',  # Alta capacidad
             # Fallback a modelos generales
-            'deepseek-v3',
             'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
             'qwen/qwen3.7-max',
             'gpt-4o-mini',
@@ -524,7 +522,6 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             'Qwen/Qwen3-Coder-30B-A3B-Instruct',
             'kimi-k2.7-code',  # Nuevo modelo de coding desde ollama.pro
             # Modelos generales
-            'deepseek-v3',
             'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
             'deepseek-r1',
             'qwen/qwen3.7-max',
@@ -593,8 +590,8 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             else:
                 # Si no hay providers Claude, cambiar a modelo alternativo para evitar timeout
                 log.warning("[Cascada] No hay providers Claude disponibles, cambiando a modelo alternativo")
-                # Reemplazar modelo Claude por deepseek-v3 para evitar timeout con AnyProvider
-                modelo_a_usar = 'deepseek-v3'
+                # Reemplazar modelo Claude por z-ai/glm-5.2 para evitar timeout con AnyProvider
+                modelo_a_usar = 'z-ai/glm-5.2'
                 providers_a_probar.extend(AVAILABLE_PROVIDERS)
         elif tipo_request == 'design':
             # Para diseño/imagen, usar lista recomendada (sin rotación específica)
@@ -804,7 +801,6 @@ def list_models():
         "deepseek-v4-pro",
         "Qwen/Qwen3-Coder-30B-A3B-Instruct",
         "deepseek-r1",
-        "deepseek-v3",
         "gpt-4o-mini",
         "gpt-4o",
         "gemini-1.5-flash",
