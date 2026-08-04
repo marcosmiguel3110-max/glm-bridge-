@@ -581,10 +581,10 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             else:
                 log.warning(f"[Cascada] Provider SurfSense no disponible en g4f.Provider")
         
-        # Si no hay provider específico, saltar este modelo (no usar providers generales)
+        # Si no hay provider específico, usar providers generales (fallback)
         if not providers_para_modelo:
-            log.warning(f"[Cascada] Modelo {modelo_actual} no tiene provider específico, saltando")
-            continue
+            log.warning(f"[Cascada] Modelo {modelo_actual} no tiene provider específico, usando providers generales")
+            providers_para_modelo = providers_a_probar
         
         for provider_actual in providers_para_modelo:
             # Detectar si es modelo Qwen para forzar rotación de IPs
