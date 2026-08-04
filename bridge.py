@@ -155,11 +155,17 @@ DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 # Pollinations: Modelos OpenAI y Sana
 # Yqcloud: GPT-4
 # HuggingSpace eliminado: Bug interno con modelos desconocidos (NoneType error)
+# Nvidia: z-ai/glm-5.2 desde nvidia.com (especialista en código)
+# OpenCode Zen: north-mini-code-free (código gratuito)
+# Community Day: moonshotai/Kimi-K2.7-Code, deepseek-ai/DeepSeek-V4-Pro
 RECOMMENDED_PROVIDERS = [
     'Qwen',
     'WeWordle',
     'Pollinations',
     'Yqcloud',
+    'Nvidia',  # Para z-ai/glm-5.2
+    'OpenCodeZen',  # Para north-mini-code-free
+    'CommunityDay',  # Para Kimi-K2.7-Code y DeepSeek-V4-Pro
 ]
 
 # Providers específicos para Claude (si están disponibles)
@@ -460,7 +466,9 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             # Segundo: gpt-4o (multimodal, bueno para diseño)
             'gpt-4o',
             # Tercero: cascada de código normal (especialistas en programación)
-            'glm-5.2',  # Especialista en programación
+            'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
+            'north-mini-code-free',  # Código gratuito desde OpenCode Zen
+            'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
             'deepseek-coder',
             'Qwen/Qwen3-Coder-30B-A3B-Instruct',
             'kimi-k2.7-code',
@@ -470,7 +478,7 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             'claude-3-opus',
             # Fallback a modelos generales
             'deepseek-v3',
-            'deepseek-v4-pro',
+            'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
             'qwen/qwen3.7-max',
             'gpt-4o-mini',
             'qwen/qwen3.7-plus',
@@ -484,6 +492,9 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             # Modelos especializados en diseño y código
             'claude-3-5-sonnet',  # Excelente para diseño y código
             'gpt-4o',  # Multimodal, bueno para diseño
+            'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
+            'north-mini-code-free',  # Código gratuito desde OpenCode Zen
+            'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
             'deepseek-coder',  # Especializado en código
             'Qwen/Qwen3-Coder-30B-A3B-Instruct',  # Coding avanzado
             'kimi-k2.7-code',  # Coding desde ollama.pro
@@ -491,26 +502,27 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             'claude-3-opus',  # Alta capacidad
             # Fallback a modelos generales
             'deepseek-v3',
-            'deepseek-v4-pro',
+            'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
             'qwen/qwen3.7-max',
             'gpt-4o-mini',
             'qwen/qwen3.7-plus',
             'deepseek-r1',
             'qwen/qwen-1.5-72b',
-            'glm-5.2',
         ]
     else:
         # CASCADA GENERAL (modelos balanceados con glm-5.2 como especialista en código)
         modelos_disponibles = [
             modelo_a_usar,
             # Especialistas en programación (cascada de código)
-            'glm-5.2',  # Especialista en programación
+            'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
+            'north-mini-code-free',  # Código gratuito desde OpenCode Zen
+            'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
             'deepseek-coder',
             'Qwen/Qwen3-Coder-30B-A3B-Instruct',
             'kimi-k2.7-code',  # Nuevo modelo de coding desde ollama.pro
             # Modelos generales
             'deepseek-v3',
-            'deepseek-v4-pro',
+            'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
             'deepseek-r1',
             'qwen/qwen3.7-max',
             'qwen/qwen3.7-plus',
@@ -726,9 +738,12 @@ def list_models():
         "claude-3-opus",
         "deepseek-coder",
         "gpt-4-turbo",
-        # Modelos generales y coding
+        # Modelos generales y coding (nuevos providers G4F)
+        "z-ai/glm-5.2",  # Desde Nvidia
+        "north-mini-code-free",  # Desde OpenCode Zen
+        "moonshotai/Kimi-K2.7-Code",  # Desde Community Day
+        "deepseek-ai/DeepSeek-V4-Pro",  # Desde Community Day
         "kimi-k2.7-code",
-        "glm-5.2",
         "qwen/qwen3.7-max",
         "qwen/qwen3.7-plus",
         "deepseek-v4-pro",
