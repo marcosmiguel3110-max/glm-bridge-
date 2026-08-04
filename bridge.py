@@ -43,6 +43,22 @@ else:
     log.warning("[Keys] No hay key de G4F configurada, usando modo sin key")
 
 # ============================================================
+# ESTADO GLOBAL DE ACTIVACIÓN DE MODELOS (SISTEMA SECUENCIAL)
+# ============================================================
+# Estado para controlar activación secuencial de modelos
+# plan_mode: True = planificación (modelos desactivados), False = ejecución (modelos activos)
+# current_model_index: índice del modelo actual en el plan
+# plan_models: lista de modelos en el plan en orden de ejecución
+model_activation_state = {
+    'plan_mode': True,  # Por defecto en modo planificación
+    'current_model_index': 0,
+    'plan_models': [],  # Se llena cuando se inicia el plan
+    'plan_complete': False
+}
+
+log.info(f"[Activación] Sistema de activación secuencial inicializado. Modo planificación: {model_activation_state['plan_mode']}")
+
+# ============================================================
 # CONFIGURACIÓN PROXIES GRATUITOS (ROTACIÓN DE IPs)
 # ============================================================
 # Lista de proxies públicos gratuitos para rotación de IPs
@@ -451,6 +467,21 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         modelo_a_usar = DEFAULT_MODEL
         log.info(f"[Cascada] Modelo 'auto' reemplazado por: {modelo_a_usar}")
 
+    # VERIFICACIÓN DE ESTADO DE PLANIFICACIÓN (SISTEMA SECUENCIAL)
+    if model_activation_state['plan_mode']:
+        # En modo planificación, rechazar solicitudes de modelos
+        log.warning(f"[Activación] Modo planificación activo. Modelos desactivados. Rechazando solicitud para {modelo_a_usar}")
+        raise RuntimeError(f'Modo planificación activo. Los modelos están desactivados hasta que se complete el plan. Llama a /v1/plan con action=complete para activar la ejecución.')
+    
+    if model_activation_state['plan_complete'] and model_activation_state['plan_models']:
+        # En modo ejecución, verificar si el modelo solicitado es el modelo actual en el plan
+        current_model = model_activation_state['plan_models'][model_activation_state['current_model_index']]
+        if modelo_a_usar != current_model:
+            log.warning(f"[Activación] Modelo {modelo_a_usar} no es el modelo actual en el plan. Modelo actual: {current_model} (índice {model_activation_state['current_model_index']})")
+            raise RuntimeError(f'Modelo {modelo_a_usar} no es el modelo actual en el plan. Modelo actual: {current_model}. Llama a /v1/plan con action=next para pasar al siguiente modelo.')
+        else:
+            log.info(f"[Activación] Modelo {modelo_a_usar} es el modelo actual en el plan. Permitiendo ejecución.")
+
     # Detectar tipo de request para seleccionar cascada apropiada
     tipo_request = detectar_tipo_request(messages)
     es_visual = esPedidoVisual(messages)
@@ -592,6 +623,17 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                         content = strip_think_tags(content)
                         content = limpiar_identidad_respuesta(content)
                         log.info(f'OK | modelo: {modelo_actual} | provider: {provider_name} | proxy: {"si" if proxy_config else "no"} | {len(content)} chars')
+                        
+                        # ACTIVACIÓN SECUENCIAL: Si el modelo actual terminó exitosamente, pasar al siguiente
+                        if model_activation_state['plan_complete'] and model_activation_state['plan_models']:
+                            if model_activation_state['current_model_index'] < len(model_activation_state['plan_models']) - 1:
+                                model_activation_state['current_model_index'] += 1
+                                next_model = model_activation_state['plan_models'][model_activation_state['current_model_index']]
+                                log.info(f"[Activación] Modelo {modelo_actual} completado. Pasando al siguiente modelo: {next_model} (índice {model_activation_state['current_model_index']})")
+                            else:
+                                log.info(f"[Activación] Modelo {modelo_actual} completado. No hay más modelos en el plan. Plan finalizado.")
+                                model_activation_state['plan_complete'] = False
+                        
                         return content, modelo_actual
                     else:
                         ultimo_error = f'{modelo_actual}/{provider_name}: respuesta vacia'
@@ -790,12 +832,98 @@ def health():
         'g4f_available': g4f_client is not None,
         'proxy_rotation_enabled': PROXY_ROTATION_ENABLED,
         'proxy_count': len(PROXY_LIST),
+        'plan_mode': model_activation_state['plan_mode'],
+        'plan_complete': model_activation_state['plan_complete'],
+        'current_model_index': model_activation_state['current_model_index'],
+        'plan_models': model_activation_state['plan_models'],
         'endpoints': {
             'chat': '/v1/chat/completions (POST, enviar "model" en el body para elegir)',
             'models': '/v1/models (GET, lista de modelos disponibles)',
             'images': '/v1/images/generations (POST)'
         }
     })
+
+@app.route('/v1/plan', methods=['POST', 'GET'])
+def plan_control():
+    """Endpoint para controlar el plan de ejecución de modelos"""
+    global model_activation_state
+    
+    if request.method == 'GET':
+        # Obtener estado actual del plan
+        return jsonify({
+            'plan_mode': model_activation_state['plan_mode'],
+            'plan_complete': model_activation_state['plan_complete'],
+            'current_model_index': model_activation_state['current_model_index'],
+            'plan_models': model_activation_state['plan_models']
+        })
+    
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        action = data.get('action')
+        models = data.get('models', [])
+        
+        if action == 'start':
+            # Iniciar plan: entrar en modo planificación con lista de modelos
+            model_activation_state['plan_mode'] = True
+            model_activation_state['plan_models'] = models
+            model_activation_state['current_model_index'] = 0
+            model_activation_state['plan_complete'] = False
+            log.info(f"[Plan] Plan iniciado con modelos: {models}")
+            return jsonify({
+                'status': 'plan_started',
+                'plan_models': models,
+                'plan_mode': True
+            })
+        
+        elif action == 'complete':
+            # Completar plan: salir de modo planificación, activar ejecución secuencial
+            model_activation_state['plan_mode'] = False
+            model_activation_state['plan_complete'] = True
+            model_activation_state['current_model_index'] = 0
+            log.info(f"[Plan] Plan completado. Iniciando ejecución secuencial de modelos: {model_activation_state['plan_models']}")
+            return jsonify({
+                'status': 'plan_complete',
+                'plan_mode': False,
+                'plan_models': model_activation_state['plan_models']
+            })
+        
+        elif action == 'next':
+            # Pasar al siguiente modelo en el plan
+            if model_activation_state['current_model_index'] < len(model_activation_state['plan_models']) - 1:
+                model_activation_state['current_model_index'] += 1
+                current_model = model_activation_state['plan_models'][model_activation_state['current_model_index']]
+                log.info(f"[Plan] Pasando al siguiente modelo: {current_model} (índice {model_activation_state['current_model_index']})")
+                return jsonify({
+                    'status': 'next_model',
+                    'current_model_index': model_activation_state['current_model_index'],
+                    'current_model': current_model
+                })
+            else:
+                log.info("[Plan] No hay más modelos en el plan")
+                return jsonify({
+                    'status': 'plan_finished',
+                    'message': 'No hay más modelos en el plan'
+                })
+        
+        elif action == 'reset':
+            # Resetear el plan
+            model_activation_state['plan_mode'] = True
+            model_activation_state['plan_models'] = []
+            model_activation_state['current_model_index'] = 0
+            model_activation_state['plan_complete'] = False
+            log.info("[Plan] Plan reseteado")
+            return jsonify({
+                'status': 'plan_reset',
+                'plan_mode': True
+            })
+        
+        else:
+            return jsonify({
+                'error': {
+                    'message': 'Acción inválida. Use: start, complete, next, o reset',
+                    'type': 'invalid_request'
+                }
+            }), 400
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
