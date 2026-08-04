@@ -554,38 +554,36 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         modelo_lower = modelo_a_usar.lower()
         
         # Mapeo específico para nuevos modelos G4F
+        # NOTA: Estos providers específicos pueden no estar disponibles o fallar en Render
+        # Por ahora, usamos fallback a providers generales si fallan
         if 'z-ai/glm-5.2' in modelo_lower or 'glm-5.2' in modelo_lower:
-            # z-ai/glm-5.2 solo funciona con provider Nvidia
+            # z-ai/glm-5.2: intentar Nvidia primero, fallback a generales
             if hasattr(g4f.Provider, 'Nvidia'):
                 providers_a_probar.append(g4f.Provider.Nvidia)
-                log.info("[Cascada] Modelo z-ai/glm-5.2 detectado, usando provider Nvidia")
-            else:
-                log.warning("[Cascada] Provider Nvidia no disponible, usando providers generales")
-                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+                log.info("[Cascada] Modelo z-ai/glm-5.2 detectado, usando provider Nvidia (con fallback)")
+            # Siempre agregar providers generales como fallback
+            providers_a_probar.extend(AVAILABLE_PROVIDERS)
         elif 'north-mini-code-free' in modelo_lower:
-            # north-mini-code-free solo funciona con provider OpenCodeZen
+            # north-mini-code-free: intentar OpenCodeZen primero, fallback a generales
             if hasattr(g4f.Provider, 'OpenCodeZen'):
                 providers_a_probar.append(g4f.Provider.OpenCodeZen)
-                log.info("[Cascada] Modelo north-mini-code-free detectado, usando provider OpenCodeZen")
-            else:
-                log.warning("[Cascada] Provider OpenCodeZen no disponible, usando providers generales")
-                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+                log.info("[Cascada] Modelo north-mini-code-free detectado, usando provider OpenCodeZen (con fallback)")
+            # Siempre agregar providers generales como fallback
+            providers_a_probar.extend(AVAILABLE_PROVIDERS)
         elif 'kimi-k2.7-code' in modelo_lower or 'moonshotai' in modelo_lower:
-            # moonshotai/Kimi-K2.7-Code solo funciona con provider CommunityDay
+            # moonshotai/Kimi-K2.7-Code: intentar CommunityDay primero, fallback a generales
             if hasattr(g4f.Provider, 'CommunityDay'):
                 providers_a_probar.append(g4f.Provider.CommunityDay)
-                log.info("[Cascada] Modelo Kimi-K2.7-Code detectado, usando provider CommunityDay")
-            else:
-                log.warning("[Cascada] Provider CommunityDay no disponible, usando providers generales")
-                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+                log.info("[Cascada] Modelo Kimi-K2.7-Code detectado, usando provider CommunityDay (con fallback)")
+            # Siempre agregar providers generales como fallback
+            providers_a_probar.extend(AVAILABLE_PROVIDERS)
         elif 'deepseek-v4-pro' in modelo_lower or 'deepseek-ai' in modelo_lower:
-            # deepseek-ai/DeepSeek-V4-Pro solo funciona con provider CommunityDay
+            # deepseek-ai/DeepSeek-V4-Pro: intentar CommunityDay primero, fallback a generales
             if hasattr(g4f.Provider, 'CommunityDay'):
                 providers_a_probar.append(g4f.Provider.CommunityDay)
-                log.info("[Cascada] Modelo DeepSeek-V4-Pro detectado, usando provider CommunityDay")
-            else:
-                log.warning("[Cascada] Provider CommunityDay no disponible, usando providers generales")
-                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+                log.info("[Cascada] Modelo DeepSeek-V4-Pro detectado, usando provider CommunityDay (con fallback)")
+            # Siempre agregar providers generales como fallback
+            providers_a_probar.extend(AVAILABLE_PROVIDERS)
         elif 'claude' in modelo_lower:
             # Usar providers específicos para Claude
             if AVAILABLE_CLAUDE_PROVIDERS:
