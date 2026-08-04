@@ -599,18 +599,11 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                 modelo_a_usar = 'deepseek-v3'
                 providers_a_probar.extend(AVAILABLE_PROVIDERS)
         elif tipo_request == 'design':
-            # Para diseño/imagen, usar providers especializados
-            providers_design = [p for p in AVAILABLE_PROVIDERS if 'Pollinations' in str(p) or 'HuggingSpace' in str(p)]
-            if providers_design:
-                log.info(f"[Cascada] Request de diseño, usando providers especializados")
-                providers_a_probar.extend(providers_design)
-            else:
-                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+            # Para diseño/imagen, usar lista recomendada (sin rotación específica)
+            providers_a_probar.extend(AVAILABLE_PROVIDERS)
         else:
             # Para modelos generales, usar lista recomendada
-            if AVAILABLE_PROVIDERS:
-                log.info(f"[Cascada] Usando providers generales: {[p.__name__ if hasattr(p, '__name__') else str(p) for p in AVAILABLE_PROVIDERS]}")
-                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+            providers_a_probar.extend(AVAILABLE_PROVIDERS)
         
         # Fallback a Ollama si no hay providers disponibles
         if not providers_a_probar:
@@ -619,7 +612,28 @@ def llamar_g4f(messages, model, temperature, max_tokens):
 
     ultimo_error = None
     for modelo_actual in modelos_a_probar:
-        for provider_actual in providers_a_probar:
+        # Determinar providers específicos para este modelo
+        modelo_lower = modelo_actual.lower()
+        providers_para_modelo = []
+        
+        if 'z-ai/glm-5.2' in modelo_lower or 'glm-5.2' in modelo_lower:
+            if hasattr(g4f.Provider, 'Nvidia'):
+                providers_para_modelo = [g4f.Provider.Nvidia]
+        elif 'north-mini-code-free' in modelo_lower:
+            if hasattr(g4f.Provider, 'OpenCodeZen'):
+                providers_para_modelo = [g4f.Provider.OpenCodeZen]
+        elif 'kimi-k2.7-code' in modelo_lower or 'moonshotai' in modelo_lower:
+            if hasattr(g4f.Provider, 'CommunityDay'):
+                providers_para_modelo = [g4f.Provider.CommunityDay]
+        elif 'deepseek-v4-pro' in modelo_lower or 'deepseek-ai' in modelo_lower:
+            if hasattr(g4f.Provider, 'CommunityDay'):
+                providers_para_modelo = [g4f.Provider.CommunityDay]
+        
+        # Si no hay provider específico, usar providers generales
+        if not providers_para_modelo:
+            providers_para_modelo = providers_a_probar
+        
+        for provider_actual in providers_para_modelo:
             # Detectar si es modelo Qwen para forzar rotación de IPs
             es_qwen = 'qwen' in modelo_actual.lower() or (hasattr(provider_actual, '__name__') and 'qwen' in provider_actual.__name__.lower())
             
