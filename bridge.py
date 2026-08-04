@@ -58,6 +58,13 @@ model_activation_state = {
 
 log.info(f"[Activación] Sistema de activación secuencial inicializado. Modo planificación: {model_activation_state['plan_mode']}")
 
+# Debug: Listar todos los providers disponibles en g4f.Provider
+log.info("[Debug] Providers disponibles en g4f.Provider:")
+if hasattr(g4f, 'Provider'):
+    for attr_name in dir(g4f.Provider):
+        if not attr_name.startswith('_'):
+            log.info(f"  - {attr_name}")
+
 # ============================================================
 # CONFIGURACIÓN PROXIES GRATUITOS (ROTACIÓN DE IPs)
 # ============================================================
@@ -547,22 +554,32 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             if hasattr(g4f.Provider, 'Nvidia'):
                 providers_para_modelo = [g4f.Provider.Nvidia]
                 log.info(f"[Cascada] Modelo {modelo_actual} usando provider Nvidia")
+            else:
+                log.warning(f"[Cascada] Provider Nvidia no disponible en g4f.Provider")
         elif 'north-mini-code-free' in modelo_lower:
             if hasattr(g4f.Provider, 'OpenCodeZen'):
                 providers_para_modelo = [g4f.Provider.OpenCodeZen]
                 log.info(f"[Cascada] Modelo {modelo_actual} usando provider OpenCodeZen")
+            else:
+                log.warning(f"[Cascada] Provider OpenCodeZen no disponible en g4f.Provider")
         elif 'kimi-k2.7-code' in modelo_lower or 'moonshotai' in modelo_lower:
             if hasattr(g4f.Provider, 'CommunityDay'):
                 providers_para_modelo = [g4f.Provider.CommunityDay]
                 log.info(f"[Cascada] Modelo {modelo_actual} usando provider CommunityDay")
+            else:
+                log.warning(f"[Cascada] Provider CommunityDay no disponible en g4f.Provider")
         elif 'deepseek-v4-pro' in modelo_lower or 'deepseek-ai' in modelo_lower:
             if hasattr(g4f.Provider, 'CommunityDay'):
                 providers_para_modelo = [g4f.Provider.CommunityDay]
                 log.info(f"[Cascada] Modelo {modelo_actual} usando provider CommunityDay")
+            else:
+                log.warning(f"[Cascada] Provider CommunityDay no disponible en g4f.Provider")
         elif 'gpt-5.4-mini-no-login' in modelo_lower or 'gpt-5.4' in modelo_lower:
             if hasattr(g4f.Provider, 'SurfSense'):
                 providers_para_modelo = [g4f.Provider.SurfSense]
                 log.info(f"[Cascada] Modelo {modelo_actual} usando provider SurfSense")
+            else:
+                log.warning(f"[Cascada] Provider SurfSense no disponible en g4f.Provider")
         
         # Si no hay provider específico, saltar este modelo (no usar providers generales)
         if not providers_para_modelo:
