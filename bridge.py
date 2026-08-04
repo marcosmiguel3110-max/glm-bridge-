@@ -471,7 +471,7 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             # Segundo: gpt-4o (multimodal, bueno para diseño)
             'gpt-4o',
             # Tercero: cascada de código normal (especialistas en programación)
-            'glm-5.2',  # Nombre corto para z-ai/glm-5.2
+            'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
             'north-mini-code-free',  # Código gratuito desde OpenCode Zen
             'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
             'deepseek-coder',
@@ -497,7 +497,7 @@ def llamar_g4f(messages, model, temperature, max_tokens):
             # Modelos especializados en diseño y código
             'claude-3-5-sonnet',  # Excelente para diseño y código
             'gpt-4o',  # Multimodal, bueno para diseño
-            'glm-5.2',  # Nombre corto para z-ai/glm-5.2
+            'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
             'north-mini-code-free',  # Código gratuito desde OpenCode Zen
             'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
             'deepseek-coder',  # Especializado en código
@@ -519,7 +519,7 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         modelos_disponibles = [
             modelo_a_usar,
             # Especialistas en programación (cascada de código)
-            'glm-5.2',  # Nombre corto para z-ai/glm-5.2
+            'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
             'north-mini-code-free',  # Código gratuito desde OpenCode Zen
             'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
             'deepseek-coder',
@@ -555,11 +555,11 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         modelo_lower = modelo_a_usar.lower()
         
         # Mapeo específico para nuevos modelos G4F
-        if 'glm-5.2' in modelo_lower:
-            # glm-5.2 solo funciona con provider Nvidia
+        if 'z-ai/glm-5.2' in modelo_lower or 'glm-5.2' in modelo_lower:
+            # z-ai/glm-5.2 solo funciona con provider Nvidia
             if hasattr(g4f.Provider, 'Nvidia'):
                 providers_a_probar.append(g4f.Provider.Nvidia)
-                log.info("[Cascada] Modelo glm-5.2 detectado, usando provider Nvidia")
+                log.info("[Cascada] Modelo z-ai/glm-5.2 detectado, usando provider Nvidia")
             else:
                 log.warning("[Cascada] Provider Nvidia no disponible, usando providers generales")
                 providers_a_probar.extend(AVAILABLE_PROVIDERS)
@@ -616,7 +616,7 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         modelo_lower = modelo_actual.lower()
         providers_para_modelo = []
         
-        if 'glm-5.2' in modelo_lower:
+        if 'z-ai/glm-5.2' in modelo_lower or 'glm-5.2' in modelo_lower:
             if hasattr(g4f.Provider, 'Nvidia'):
                 providers_para_modelo = [g4f.Provider.Nvidia]
         elif 'north-mini-code-free' in modelo_lower:
@@ -754,6 +754,11 @@ def chat_completions():
                     'type': 'invalid_request'
                 }
             }), 400
+
+        # Reemplazar 'g4f-bridge' por modelo por defecto (no es un modelo válido)
+        if model == 'g4f-bridge':
+            model = DEFAULT_MODEL
+            log.info(f'Model "g4f-bridge" reemplazado por: {model}')
 
         log.info(f'POST /v1/chat/completions | model pedido={model} | messages={len(messages)}')
 
