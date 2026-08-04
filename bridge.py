@@ -471,7 +471,7 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     if model_activation_state['plan_mode']:
         # En modo planificación, rechazar solicitudes de modelos
         log.warning(f"[Activación] Modo planificación activo. Modelos desactivados. Rechazando solicitud para {modelo_a_usar}")
-        raise RuntimeError(f'Modo planificación activo. Los modelos están desactivados hasta que se complete el plan. Llama a /v1/plan con action=complete para activar la ejecución.')
+        raise RuntimeError(f'Modo planificación activo. Los modelos están desactivados. Llama a /v1/plan con action=disable para funcionamiento normal, o action=complete para activar ejecución secuencial.')
     
     if model_activation_state['plan_complete'] and model_activation_state['plan_models']:
         # En modo ejecución, verificar si el modelo solicitado es el modelo actual en el plan
@@ -921,10 +921,22 @@ def plan_control():
                 'plan_mode': True
             })
         
+        elif action == 'disable':
+            # Desactivar modo planificación completamente (funcionamiento normal)
+            model_activation_state['plan_mode'] = False
+            model_activation_state['plan_complete'] = False
+            model_activation_state['plan_models'] = []
+            model_activation_state['current_model_index'] = 0
+            log.info("[Plan] Modo planificación desactivado. Funcionamiento normal activado.")
+            return jsonify({
+                'status': 'plan_disabled',
+                'plan_mode': False
+            })
+        
         else:
             return jsonify({
                 'error': {
-                    'message': 'Acción inválida. Use: start, complete, next, o reset',
+                    'message': 'Acción inválida. Use: start, complete, next, reset, o disable',
                     'type': 'invalid_request'
                 }
             }), 400
