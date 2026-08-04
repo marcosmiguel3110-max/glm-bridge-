@@ -10,9 +10,6 @@ import os
 import json
 import time
 import requests
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import base64
@@ -25,12 +22,11 @@ KEYS_FILE_JSON = os.path.join(os.path.dirname(__file__), 'g4f_keys.json')  # Ver
 # URL de G4F para verificar key
 G4F_API_URL = "https://g4f.space/v1/chat/completions"
 
-# Configuración de alertas por email
+# Configuración de alertas por email (Brevo API REST - mismo servicio que códigos)
 ALERT_EMAIL = os.getenv('G4F_ALERT_EMAIL', 'marcos.miguel.3110@gmail.com')
-SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-SMTP_USER = os.getenv('SMTP_USER', '')
-SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
+BREVO_API_KEY = os.getenv('BREVO_API_KEY', '')
+BREVO_SENDER_EMAIL = os.getenv('BREVO_SENDER_EMAIL', 'xddxx9664@11672850.brevosend.com')
+BREVO_SENDER_NAME = os.getenv('BREVO_SENDER_NAME', 'VerboAI G4F Key Manager')
 
 class G4FKeyManager:
     def __init__(self):
@@ -229,22 +225,16 @@ class G4FKeyManager:
         return keys_por_expirar
     
     def enviar_alerta_email(self, keys_por_expirar: List[Dict]):
-        """Enviar alerta por email sobre keys por expirar"""
-        if not SMTP_USER or not SMTP_PASSWORD:
-            print("[Alertas] No hay configuración SMTP, no se enviará email")
+        """Enviar alerta por email sobre keys por expirar usando API REST de Brevo"""
+        if not BREVO_API_KEY:
+            print("[Alertas] No hay configuración de API de Brevo, no se enviará email")
             return False
         
         if not keys_por_expirar:
             return False
         
         try:
-            # Crear mensaje
-            msg = MIMEMultipart()
-            msg['From'] = SMTP_USER
-            msg['To'] = ALERT_EMAIL
-            msg['Subject'] = f"⚠️ ALERTA: Keys de G4F por expirar ({len(keys_por_expirar)} keys)"
-            
-            # Cuerpo del email
+            # Construir cuerpo del email HTML
             body = f"""
             <html>
             <body>
@@ -278,16 +268,38 @@ class G4FKeyManager:
             </html>
             """
             
-            msg.attach(MIMEText(body, 'html'))
+            # Enviar email usando API REST de Brevo
+            url = "https://api.brevo.com/v3/smtp/email"
+            headers = {
+                "accept": "application/json",
+                "api-key": BREVO_API_KEY,
+                "content-type": "application/json"
+            }
             
-            # Enviar email
-            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-                server.starttls()
-                server.login(SMTP_USER, SMTP_PASSWORD)
-                server.send_message(msg)
+            payload = {
+                "sender": {
+                    "name": BREVO_SENDER_NAME,
+                    "email": BREVO_SENDER_EMAIL
+                },
+                "to": [
+                    {
+                        "email": ALERT_EMAIL,
+                        "name": "Marco Miguel"
+                    }
+                ],
+                "subject": f"⚠️ ALERTA: Keys de G4F por expirar ({len(keys_por_expirar)} keys)",
+                "htmlContent": body
+            }
             
-            print(f"[Alertas] Email enviado a {ALERT_EMAIL}")
-            return True
+            response = requests.post(url, json=payload, headers=headers)
+            
+            if response.status_code == 201 or response.status_code == 200:
+                print(f"[Alertas] Email enviado a {ALERT_EMAIL}")
+                return True
+            else:
+                print(f"[Alertas] Error enviando email: {response.status_code} - {response.text}")
+                return False
+                
         except Exception as e:
             print(f"[Alertas] Error enviando email: {e}")
             return False
