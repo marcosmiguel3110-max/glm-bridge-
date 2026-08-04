@@ -515,22 +515,28 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         if 'z-ai/glm-5.2' in modelo_lower or 'glm-5.2' in modelo_lower:
             if hasattr(g4f.Provider, 'Nvidia'):
                 providers_para_modelo = [g4f.Provider.Nvidia]
+                log.info(f"[Cascada] Modelo {modelo_actual} usando provider Nvidia")
         elif 'north-mini-code-free' in modelo_lower:
             if hasattr(g4f.Provider, 'OpenCodeZen'):
                 providers_para_modelo = [g4f.Provider.OpenCodeZen]
+                log.info(f"[Cascada] Modelo {modelo_actual} usando provider OpenCodeZen")
         elif 'kimi-k2.7-code' in modelo_lower or 'moonshotai' in modelo_lower:
             if hasattr(g4f.Provider, 'CommunityDay'):
                 providers_para_modelo = [g4f.Provider.CommunityDay]
+                log.info(f"[Cascada] Modelo {modelo_actual} usando provider CommunityDay")
         elif 'deepseek-v4-pro' in modelo_lower or 'deepseek-ai' in modelo_lower:
             if hasattr(g4f.Provider, 'CommunityDay'):
                 providers_para_modelo = [g4f.Provider.CommunityDay]
+                log.info(f"[Cascada] Modelo {modelo_actual} usando provider CommunityDay")
         elif 'gpt-5.4-mini-no-login' in modelo_lower or 'gpt-5.4' in modelo_lower:
             if hasattr(g4f.Provider, 'SurfSense'):
                 providers_para_modelo = [g4f.Provider.SurfSense]
+                log.info(f"[Cascada] Modelo {modelo_actual} usando provider SurfSense")
         
-        # Si no hay provider específico, usar providers generales
+        # Si no hay provider específico, saltar este modelo (no usar providers generales)
         if not providers_para_modelo:
-            providers_para_modelo = providers_a_probar
+            log.warning(f"[Cascada] Modelo {modelo_actual} no tiene provider específico, saltando")
+            continue
         
         for provider_actual in providers_para_modelo:
             # Detectar si es modelo Qwen para forzar rotación de IPs
