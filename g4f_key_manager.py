@@ -76,21 +76,25 @@ class G4FKeyManager:
         return ''.join(desencriptado)
     
     def _cargar_keys_desde_env(self) -> List[Dict]:
-        """Cargar keys desde variables de entorno G4F_KEYS_JSON1, G4F_KEYS_JSON2, etc."""
+        """Cargar keys desde variables de entorno G4F_KEY1, G4F_KEY2, etc."""
         keys = []
         
-        # Buscar variables de entorno G4F_KEYS_JSON1, G4F_KEYS_JSON2, etc.
+        # Buscar variables de entorno G4F_KEY1, G4F_KEY2, etc.
         for i in range(1, 10):  # Soportar hasta 10 keys
-            env_key = f'G4F_KEYS_JSON{i}'
+            env_key = f'G4F_KEY{i}'
             env_value = os.getenv(env_key)
             
             if env_value:
-                try:
-                    key_data = json.loads(env_value)
-                    if isinstance(key_data, dict):
-                        keys.append(key_data)
-                except json.JSONDecodeError:
-                    print(f"[Error] Formato inválido en {env_key}")
+                # Formato: key|cuenta|fecha_expiracion
+                parts = env_value.split('|')
+                if len(parts) >= 2:
+                    key_data = {
+                        "key": parts[0],
+                        "cuenta": parts[1],
+                        "fecha_expiracion": parts[2] if len(parts) > 2 else None,
+                        "estado": "activa"
+                    }
+                    keys.append(key_data)
         
         return keys if keys else None
     

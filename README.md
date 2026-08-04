@@ -165,12 +165,12 @@ El bridge incluye un sistema de gestión de keys de G4F con encriptación para p
 
 **Para configurar múltiples keys en Render:**
 
-En Render → Environment, agrega estas variables:
+En Render → Environment, agrega estas variables (formato: `key|cuenta|fecha_expiracion`):
 
 ```bash
-G4F_KEYS_JSON1={"key":"g4f_u_mrtf2a_ffc2388b79b164701958ffcdf8b50b65044cfd4183dcdb79_a1e6c221","cuenta":"marcosmiguel3110-max","fecha_expiracion":"2026-11-01","estado":"activa"}
-G4F_KEYS_JSON2={"key":"g4f_u_msdvcb_27795f75f5f0435162a99064c3d988c6b27cbeb5a4be3b76_4e4e7132","cuenta":"xddxx9664-crypto","fecha_expiracion":"2026-11-01","estado":"activa"}
-G4F_KEYS_JSON3={"key":"g4f_u_msdvfr_4915d588987a7c724ce70a9760148150b0cfd13f0bd6c6e2_1fe53ed4","cuenta":"ccat84222-afk","fecha_expiracion":"2026-11-01","estado":"activa"}
+G4F_KEY1=g4f_u_mrtf2a_ffc2388b79b164701958ffcdf8b50b65044cfd4183dcdb79_a1e6c221|marcosmiguel3110-max|2026-11-01
+G4F_KEY2=g4f_u_msdvcb_27795f75f5f0435162a99064c3d988c6b27cbeb5a4be3b76_4e4e7132|xddxx9664-crypto|2026-11-01
+G4F_KEY3=g4f_u_msdvfr_4915d588987a7c724ce70a9760148150b0cfd13f0bd6c6e2_1fe53ed4|ccat84222-afk|2026-11-01
 ```
 
 **Para configurar una sola key (alternativa):**
