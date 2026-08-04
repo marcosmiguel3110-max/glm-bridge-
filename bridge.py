@@ -158,14 +158,12 @@ DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 # nvidia.com: z-ai/glm-5.2 (especialista en código)
 # OpenCode Zen: north-mini-code-free (código gratuito)
 # community-day-2026: moonshotai/Kimi-K2.7-Code, deepseek-ai/DeepSeek-V4-Pro
+# SurfSense: gpt-5.4-mini-no-login
 RECOMMENDED_PROVIDERS = [
-    'Qwen',
-    'WeWordle',
-    'Pollinations',
-    'Yqcloud',
     'Nvidia',  # Para z-ai/glm-5.2
     'OpenCodeZen',  # Para north-mini-code-free
     'CommunityDay',  # Para Kimi-K2.7-Code y DeepSeek-V4-Pro
+    'SurfSense',  # Para gpt-5.4-mini-no-login
 ]
 
 # Providers específicos para Claude (si están disponibles)
@@ -461,76 +459,37 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     # CASCADA DE MODELOS SEGÚN TIPO DE REQUEST
     if es_visual:
         # CASCADA MODELOS OPENROUTER CANVAS (para pedidos visuales/canvas/juegos/Modo Design)
-        # qwen/qwen3.6-27b primero, luego gpt-4o, luego cascada de código normal
+        # Solo modelos con providers específicos
         modelos_disponibles = [
             modelo_a_usar,
-            # Primero: qwen/qwen3.6-27b (especialista en canvas/visuales)
-            'qwen/qwen3.6-27b',
-            # Segundo: gpt-4o (multimodal, bueno para diseño)
-            'gpt-4o',
-            # Tercero: cascada de código normal (especialistas en programación)
+            # Modelos con providers específicos
             'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
             'north-mini-code-free',  # Código gratuito desde OpenCode Zen
             'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
-            'deepseek-coder',
-            'Qwen/Qwen3-Coder-30B-A3B-Instruct',
-            'kimi-k2.7-code',
-            # Cuarto: modelos de diseño adicionales
-            'claude-3-5-sonnet',
-            'gpt-4-turbo',
-            'claude-3-opus',
-            # Fallback a modelos generales
             'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
-            'qwen/qwen3.7-max',
-            'gpt-4o-mini',
-            'qwen/qwen3.7-plus',
-            'deepseek-r1',
-            'qwen/qwen-1.5-72b',
+            'gpt-5.4-mini-no-login',  # Desde SurfSense
         ]
     elif tipo_request == 'design':
-        # Cascada para diseño/canvas/juegos (modelos especializados primero)
+        # Cascada para diseño/canvas/juegos (solo modelos con providers específicos)
         modelos_disponibles = [
             modelo_a_usar,
-            # Modelos especializados en diseño y código
-            'claude-3-5-sonnet',  # Excelente para diseño y código
-            'gpt-4o',  # Multimodal, bueno para diseño
+            # Modelos con providers específicos
             'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
             'north-mini-code-free',  # Código gratuito desde OpenCode Zen
             'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
-            'deepseek-coder',  # Especializado en código
-            'Qwen/Qwen3-Coder-30B-A3B-Instruct',  # Coding avanzado
-            'kimi-k2.7-code',  # Coding desde ollama.pro
-            'gpt-4-turbo',  # Bueno para diseño
-            'claude-3-opus',  # Alta capacidad
-            # Fallback a modelos generales
             'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
-            'qwen/qwen3.7-max',
-            'gpt-4o-mini',
-            'qwen/qwen3.7-plus',
-            'deepseek-r1',
-            'qwen/qwen-1.5-72b',
+            'gpt-5.4-mini-no-login',  # Desde SurfSense
         ]
     else:
-        # CASCADA GENERAL (modelos balanceados con glm-5.2 como especialista en código)
+        # CASCADA GENERAL (solo modelos con providers específicos)
         modelos_disponibles = [
             modelo_a_usar,
-            # Especialistas en programación (cascada de código)
+            # Modelos con providers específicos
             'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
             'north-mini-code-free',  # Código gratuito desde OpenCode Zen
             'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
-            'deepseek-coder',
-            'Qwen/Qwen3-Coder-30B-A3B-Instruct',
-            'kimi-k2.7-code',  # Nuevo modelo de coding desde ollama.pro
-            # Modelos generales
             'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
-            'deepseek-r1',
-            'qwen/qwen3.7-max',
-            'qwen/qwen3.7-plus',
-            'gpt-4o-mini',
-            'gpt-4o',
-            'gemini-1.5-flash',
-            'gemini-1.5-pro',
-            'qwen/qwen-1.5-72b',
+            'gpt-5.4-mini-no-login',  # Desde SurfSense
         ]
 
     vistos = set()
@@ -544,66 +503,8 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     if provider_desde_modelo:
         providers_a_probar = [provider_desde_modelo]
     else:
-        providers_a_probar = []
-        
-        # Mapeo dinámico según el modelo pedido
-        modelo_lower = modelo_a_usar.lower()
-        
-        # Mapeo específico para nuevos modelos G4F
-        if 'z-ai/glm-5.2' in modelo_lower or 'glm-5.2' in modelo_lower:
-            # z-ai/glm-5.2 solo funciona con provider Nvidia
-            if hasattr(g4f.Provider, 'Nvidia'):
-                providers_a_probar.append(g4f.Provider.Nvidia)
-                log.info("[Cascada] Modelo z-ai/glm-5.2 detectado, usando provider Nvidia")
-            else:
-                log.warning("[Cascada] Provider Nvidia no disponible, usando providers generales")
-                providers_a_probar.extend(AVAILABLE_PROVIDERS)
-        elif 'north-mini-code-free' in modelo_lower:
-            # north-mini-code-free solo funciona con provider OpenCodeZen
-            if hasattr(g4f.Provider, 'OpenCodeZen'):
-                providers_a_probar.append(g4f.Provider.OpenCodeZen)
-                log.info("[Cascada] Modelo north-mini-code-free detectado, usando provider OpenCodeZen")
-            else:
-                log.warning("[Cascada] Provider OpenCodeZen no disponible, usando providers generales")
-                providers_a_probar.extend(AVAILABLE_PROVIDERS)
-        elif 'kimi-k2.7-code' in modelo_lower or 'moonshotai' in modelo_lower:
-            # moonshotai/Kimi-K2.7-Code solo funciona con provider CommunityDay
-            if hasattr(g4f.Provider, 'CommunityDay'):
-                providers_a_probar.append(g4f.Provider.CommunityDay)
-                log.info("[Cascada] Modelo Kimi-K2.7-Code detectado, usando provider CommunityDay")
-            else:
-                log.warning("[Cascada] Provider CommunityDay no disponible, usando providers generales")
-                providers_a_probar.extend(AVAILABLE_PROVIDERS)
-        elif 'deepseek-v4-pro' in modelo_lower or 'deepseek-ai' in modelo_lower:
-            # deepseek-ai/DeepSeek-V4-Pro solo funciona con provider CommunityDay
-            if hasattr(g4f.Provider, 'CommunityDay'):
-                providers_a_probar.append(g4f.Provider.CommunityDay)
-                log.info("[Cascada] Modelo DeepSeek-V4-Pro detectado, usando provider CommunityDay")
-            else:
-                log.warning("[Cascada] Provider CommunityDay no disponible, usando providers generales")
-                providers_a_probar.extend(AVAILABLE_PROVIDERS)
-        elif 'claude' in modelo_lower:
-            # Usar providers específicos para Claude
-            if AVAILABLE_CLAUDE_PROVIDERS:
-                log.info(f"[Cascada] Modelo Claude detectado, usando providers Claude: {[p.__name__ if hasattr(p, '__name__') else str(p) for p in AVAILABLE_CLAUDE_PROVIDERS]}")
-                providers_a_probar.extend(AVAILABLE_CLAUDE_PROVIDERS)
-            else:
-                # Si no hay providers Claude, cambiar a modelo alternativo para evitar timeout
-                log.warning("[Cascada] No hay providers Claude disponibles, cambiando a modelo alternativo")
-                # Reemplazar modelo Claude por z-ai/glm-5.2 para evitar timeout con AnyProvider
-                modelo_a_usar = 'z-ai/glm-5.2'
-                providers_a_probar.extend(AVAILABLE_PROVIDERS)
-        elif tipo_request == 'design':
-            # Para diseño/imagen, usar lista recomendada (sin rotación específica)
-            providers_a_probar.extend(AVAILABLE_PROVIDERS)
-        else:
-            # Para modelos generales, usar lista recomendada
-            providers_a_probar.extend(AVAILABLE_PROVIDERS)
-        
-        # Fallback a Ollama si no hay providers disponibles
-        if not providers_a_probar:
-            log.warning("[Cascada] No hay providers disponibles, usando Ollama como fallback")
-            providers_a_probar.append(g4f.Provider.Ollama)
+        # Usar lista de providers recomendados (solo providers específicos)
+        providers_a_probar = AVAILABLE_PROVIDERS
 
     ultimo_error = None
     for modelo_actual in modelos_a_probar:
@@ -623,6 +524,9 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         elif 'deepseek-v4-pro' in modelo_lower or 'deepseek-ai' in modelo_lower:
             if hasattr(g4f.Provider, 'CommunityDay'):
                 providers_para_modelo = [g4f.Provider.CommunityDay]
+        elif 'gpt-5.4-mini-no-login' in modelo_lower or 'gpt-5.4' in modelo_lower:
+            if hasattr(g4f.Provider, 'SurfSense'):
+                providers_para_modelo = [g4f.Provider.SurfSense]
         
         # Si no hay provider específico, usar providers generales
         if not providers_para_modelo:
@@ -785,27 +689,12 @@ def list_models():
     modelos = [
         # Modelos especializados en canvas/visuales (OpenRouter Canvas)
         "qwen/qwen3.6-27b",
-        # Modelos especializados en diseño/canvas/juegos
-        "claude-3-5-sonnet",
-        "claude-3-opus",
-        "deepseek-coder",
-        "gpt-4-turbo",
-        # Modelos generales y coding (nuevos providers G4F)
+        # Modelos con providers específicos
         "z-ai/glm-5.2",  # Desde Nvidia
         "north-mini-code-free",  # Desde OpenCode Zen
         "moonshotai/Kimi-K2.7-Code",  # Desde Community Day
         "deepseek-ai/DeepSeek-V4-Pro",  # Desde Community Day
-        "kimi-k2.7-code",
-        "qwen/qwen3.7-max",
-        "qwen/qwen3.7-plus",
-        "deepseek-v4-pro",
-        "Qwen/Qwen3-Coder-30B-A3B-Instruct",
-        "deepseek-r1",
-        "gpt-4o-mini",
-        "gpt-4o",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "qwen/qwen-1.5-72b"
+        "gpt-5.4-mini-no-login"  # Desde SurfSense
     ]
     data = [{"id": m, "object": "model", "owned_by": "g4f-bridge"} for m in modelos]
     return jsonify({"object": "list", "data": data})
