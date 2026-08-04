@@ -50,7 +50,7 @@ else:
 # current_model_index: índice del modelo actual en el plan
 # plan_models: lista de modelos en el plan en orden de ejecución
 model_activation_state = {
-    'plan_mode': True,  # Por defecto en modo planificación
+    'plan_mode': False,  # Por defecto desactivado (funcionamiento normal)
     'current_model_index': 0,
     'plan_models': [],  # Se llena cuando se inicia el plan
     'plan_complete': False
