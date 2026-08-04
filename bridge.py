@@ -242,6 +242,10 @@ try:
         }
         log.info(f"[Proxies] Client g4f configurado con proxy por defecto")
     
+    # Configurar timeout más corto para evitar bloqueos largos (30s en lugar de 120s)
+    # Esto permite que la cascada de modelos falle más rápido y pase al siguiente
+    client_kwargs['timeout'] = 30
+    
     g4f_client = Client(**client_kwargs)
     
     # CONFIGURACIÓN DE DEEPSEEK CON ARCHIVOS HAR
