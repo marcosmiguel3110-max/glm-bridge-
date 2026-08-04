@@ -155,13 +155,17 @@ DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 # Pollinations: Modelos OpenAI y Sana
 # Yqcloud: GPT-4
 # HuggingSpace eliminado: Bug interno con modelos desconocidos (NoneType error)
-# NOTA: Los nuevos modelos (z-ai/glm-5.2, north-mini-code-free, Kimi-K2.7-Code, DeepSeek-V4-Pro)
-# están en las cascadas pero usarán los providers generales (no providers específicos)
+# nvidia.com: z-ai/glm-5.2 (especialista en código)
+# OpenCode Zen: north-mini-code-free (código gratuito)
+# community-day-2026: moonshotai/Kimi-K2.7-Code, deepseek-ai/DeepSeek-V4-Pro
 RECOMMENDED_PROVIDERS = [
     'Qwen',
     'WeWordle',
     'Pollinations',
     'Yqcloud',
+    'Nvidia',  # Para z-ai/glm-5.2
+    'OpenCodeZen',  # Para north-mini-code-free
+    'CommunityDay',  # Para Kimi-K2.7-Code y DeepSeek-V4-Pro
 ]
 
 # Providers específicos para Claude (si están disponibles)
@@ -550,7 +554,40 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         # Mapeo dinámico según el modelo pedido
         modelo_lower = modelo_a_usar.lower()
         
-        if 'claude' in modelo_lower:
+        # Mapeo específico para nuevos modelos G4F
+        if 'z-ai/glm-5.2' in modelo_lower or 'glm-5.2' in modelo_lower:
+            # z-ai/glm-5.2 solo funciona con provider Nvidia
+            if hasattr(g4f.Provider, 'Nvidia'):
+                providers_a_probar.append(g4f.Provider.Nvidia)
+                log.info("[Cascada] Modelo z-ai/glm-5.2 detectado, usando provider Nvidia")
+            else:
+                log.warning("[Cascada] Provider Nvidia no disponible, usando providers generales")
+                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+        elif 'north-mini-code-free' in modelo_lower:
+            # north-mini-code-free solo funciona con provider OpenCodeZen
+            if hasattr(g4f.Provider, 'OpenCodeZen'):
+                providers_a_probar.append(g4f.Provider.OpenCodeZen)
+                log.info("[Cascada] Modelo north-mini-code-free detectado, usando provider OpenCodeZen")
+            else:
+                log.warning("[Cascada] Provider OpenCodeZen no disponible, usando providers generales")
+                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+        elif 'kimi-k2.7-code' in modelo_lower or 'moonshotai' in modelo_lower:
+            # moonshotai/Kimi-K2.7-Code solo funciona con provider CommunityDay
+            if hasattr(g4f.Provider, 'CommunityDay'):
+                providers_a_probar.append(g4f.Provider.CommunityDay)
+                log.info("[Cascada] Modelo Kimi-K2.7-Code detectado, usando provider CommunityDay")
+            else:
+                log.warning("[Cascada] Provider CommunityDay no disponible, usando providers generales")
+                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+        elif 'deepseek-v4-pro' in modelo_lower or 'deepseek-ai' in modelo_lower:
+            # deepseek-ai/DeepSeek-V4-Pro solo funciona con provider CommunityDay
+            if hasattr(g4f.Provider, 'CommunityDay'):
+                providers_a_probar.append(g4f.Provider.CommunityDay)
+                log.info("[Cascada] Modelo DeepSeek-V4-Pro detectado, usando provider CommunityDay")
+            else:
+                log.warning("[Cascada] Provider CommunityDay no disponible, usando providers generales")
+                providers_a_probar.extend(AVAILABLE_PROVIDERS)
+        elif 'claude' in modelo_lower:
             # Usar providers específicos para Claude
             if AVAILABLE_CLAUDE_PROVIDERS:
                 log.info(f"[Cascada] Modelo Claude detectado, usando providers Claude: {[p.__name__ if hasattr(p, '__name__') else str(p) for p in AVAILABLE_CLAUDE_PROVIDERS]}")
