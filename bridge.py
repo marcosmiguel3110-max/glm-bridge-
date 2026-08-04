@@ -545,12 +545,8 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         
         if 'z-ai/glm-5.2' in modelo_lower or 'glm-5.2' in modelo_lower:
             if hasattr(g4f.Provider, 'Nvidia'):
-                # Usar proxy alternativo de g4f para Nvidia (sin API key)
-                nvidia_provider = g4f.Provider.Nvidia
-                if hasattr(nvidia_provider, 'base_url'):
-                    nvidia_provider.base_url = "https://g4f.dev/api/nvidia"
-                providers_para_modelo = [nvidia_provider]
-                log.info(f"[Cascada] Modelo {modelo_actual} usando provider Nvidia (proxy g4f.dev)")
+                providers_para_modelo = [g4f.Provider.Nvidia]
+                log.info(f"[Cascada] Modelo {modelo_actual} usando provider Nvidia")
         elif 'north-mini-code-free' in modelo_lower:
             if hasattr(g4f.Provider, 'OpenCodeZen'):
                 providers_para_modelo = [g4f.Provider.OpenCodeZen]
