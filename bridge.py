@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 # Cambiá esta fecha/hash cada vez que subas un cambio importante y
 # comparala contra lo que aparece en /health para saber si el deploy
 # realmente se aplicó.
-BUILD_VERSION = "2026-08-05-fix-hosted-g4f-space-v2"
+BUILD_VERSION = "2026-08-05-fix-key-rotation-v4"
 RENDER_COMMIT = os.environ.get('RENDER_GIT_COMMIT', 'desconocido')
 
 app = Flask(__name__)
@@ -296,16 +296,27 @@ REQUEST_TIMEOUT_SECONDS = int(os.environ.get('G4F_REQUEST_TIMEOUT', '25'))
 TOTAL_REQUEST_BUDGET_SECONDS = int(os.environ.get('G4F_TOTAL_BUDGET', '55'))
 # Circuit breaker: si un provider falla, no se reintenta durante este tiempo.
 PROVIDER_COOLDOWN_SECONDS = int(os.environ.get('G4F_PROVIDER_COOLDOWN', '180'))
+# Cooldown especial y mucho más largo para cuando g4f.space devuelve el
+# error de cuota "Active day limit" (límite de días activos por IP/key
+# anónima). Reintentar cada 3 minutos no sirve de nada en ese caso — la
+# cuota se resetea recién en días, no en minutos.
+HOSTED_QUOTA_COOLDOWN_SECONDS = int(os.environ.get('G4F_HOSTED_QUOTA_COOLDOWN', str(6 * 3600)))
 provider_ultimo_fallo = {}  # nombre_provider -> timestamp del último fallo
+provider_cooldown_custom = {}  # nombre_provider -> duración de cooldown específica (segundos)
 
 def provider_en_cooldown(provider_name):
     ts = provider_ultimo_fallo.get(provider_name)
     if ts is None:
         return False
-    return (time.time() - ts) < PROVIDER_COOLDOWN_SECONDS
+    duracion = provider_cooldown_custom.get(provider_name, PROVIDER_COOLDOWN_SECONDS)
+    return (time.time() - ts) < duracion
 
-def marcar_provider_fallido(provider_name):
+def marcar_provider_fallido(provider_name, cooldown_segundos=None):
     provider_ultimo_fallo[provider_name] = time.time()
+    if cooldown_segundos is not None:
+        provider_cooldown_custom[provider_name] = cooldown_segundos
+    else:
+        provider_cooldown_custom.pop(provider_name, None)
 
 g4f_client = None
 try:
@@ -543,7 +554,13 @@ def intentar_g4f_space_hosted(nombre_live_provider, modelo, messages_reforzados,
     if provider_en_cooldown(f"hosted:{nombre_live_provider}"):
         raise RuntimeError(f'{nombre_live_provider}: en cooldown (falló hace poco)')
 
-    client = ClientFactory.create_client(nombre_live_provider, timeout=timeout_s)
+    # Pasamos nuestra api_key de G4F si la tenemos configurada (G4F_API_KEY
+    # env var / g4f_keys_state). Sin esto, g4f.space usa una key anónima
+    # compartida que tiene un límite de "3 días activos cada 12" — por eso
+    # es importante registrarse gratis en https://g4f.dev/members.html y
+    # setear G4F_API_KEY en Render con la key real.
+    api_key = g4f_keys_state.get('current_key')
+    client = ClientFactory.create_client(nombre_live_provider, timeout=timeout_s, api_key=api_key)
     response = client.chat.completions.create(
         model=modelo,
         messages=messages_reforzados,
@@ -632,20 +649,63 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         if (time.time() - tiempo_inicio_cascada) > TOTAL_REQUEST_BUDGET_SECONDS:
             log.warning(f"[Hosted] Presupuesto de tiempo agotado antes de terminar de probar g4f.space")
             break
-        try:
-            log.info(f"[Hosted] Probando g4f.space | provider: {nombre_live_provider} | modelo: {modelo_hosted}")
-            content = intentar_g4f_space_hosted(
-                nombre_live_provider, modelo_hosted, messages_reforzados,
-                temperature, max_tokens, REQUEST_TIMEOUT_SECONDS
-            )
-            content = strip_think_tags(content)
-            content = limpiar_identidad_respuesta(content)
-            log.info(f"[Hosted] OK | provider: {nombre_live_provider} | modelo: {modelo_hosted} | {len(content)} chars")
-            return content, f'{nombre_live_provider}:{modelo_hosted}'
-        except Exception as e:
-            log.warning(f"[Hosted] Fallo {nombre_live_provider}/{modelo_hosted}: {e}")
-            marcar_provider_fallido(f"hosted:{nombre_live_provider}")
-            continue
+
+        # Con varias keys cargadas (G4F_KEY1..9), si una se queda sin cupo
+        # ("Active day limit") probamos con las siguientes antes de tirar
+        # la toalla en este provider. keys_intentadas evita loops infinitos
+        # si obtener_key_activa() siempre devuelve la misma.
+        keys_intentadas = set()
+        while True:
+            if (time.time() - tiempo_inicio_cascada) > TOTAL_REQUEST_BUDGET_SECONDS:
+                break
+            try:
+                log.info(f"[Hosted] Probando g4f.space | provider: {nombre_live_provider} | modelo: {modelo_hosted} | key: {(g4f_keys_state['current_key'] or 'anonima')[:16]}...")
+                content = intentar_g4f_space_hosted(
+                    nombre_live_provider, modelo_hosted, messages_reforzados,
+                    temperature, max_tokens, REQUEST_TIMEOUT_SECONDS
+                )
+                content = strip_think_tags(content)
+                content = limpiar_identidad_respuesta(content)
+                log.info(f"[Hosted] OK | provider: {nombre_live_provider} | modelo: {modelo_hosted} | {len(content)} chars")
+                return content, f'{nombre_live_provider}:{modelo_hosted}'
+            except Exception as e:
+                error_str = str(e).lower()
+                log.warning(f"[Hosted] Fallo {nombre_live_provider}/{modelo_hosted}: {e}")
+
+                cuota_o_auth_agotada = (
+                    'active day limit' in error_str
+                    or '401' in error_str or 'unauthorized' in error_str or 'invalid api key' in error_str
+                    or '429' in error_str or 'rate limit' in error_str or 'quota' in error_str
+                )
+                if cuota_o_auth_agotada and g4f_keys_state.get('current_key'):
+                    # Marcamos esta key como agotada/inválida y probamos con
+                    # la siguiente si hay otra distinta disponible.
+                    keys_intentadas.add(g4f_keys_state['current_key'])
+                    g4f_key_manager.marcar_key_expirada(g4f_keys_state['current_key'])
+                    nueva_key = g4f_key_manager.obtener_key_activa()
+                    if nueva_key and nueva_key not in keys_intentadas:
+                        g4f_keys_state['current_key'] = nueva_key
+                        log.info(f"[Keys] Rotando a otra key para {nombre_live_provider}: {nueva_key[:16]}...")
+                        continue  # reintentar este mismo provider con la key nueva
+
+                if 'active day limit' in error_str:
+                    # Ya no quedan más keys propias para rotar (o no había
+                    # ninguna configurada) y seguimos con cuota agotada.
+                    # No es un fallo pasajero: NO se arregla reintentando en
+                    # unos minutos. Enfriamos los providers hosteados por
+                    # mucho más tiempo y cortamos la cascada hosteada.
+                    log.error(
+                        "[Hosted] Cuota de días activos de g4f.space agotada en todas las keys disponibles. "
+                        "Registrate gratis en https://g4f.dev/members.html, conseguí más API keys y "
+                        "cargalas como G4F_KEY1, G4F_KEY2... en Render para evitar este límite."
+                    )
+                    for prov_hosted, _ in intentos_hosted:
+                        marcar_provider_fallido(f"hosted:{prov_hosted}", cooldown_segundos=HOSTED_QUOTA_COOLDOWN_SECONDS)
+                    break
+
+                marcar_provider_fallido(f"hosted:{nombre_live_provider}")
+                break
+        # continúa con el siguiente provider hosteado de la lista (si lo hay)
 
     log.warning("[Hosted] g4f.space no respondió con ningún modelo, cayendo al cascada local de providers")
 
@@ -994,9 +1054,10 @@ def health():
         'request_timeout_seconds': REQUEST_TIMEOUT_SECONDS,
         'total_request_budget_seconds': TOTAL_REQUEST_BUDGET_SECONDS,
         'providers_activos': [p.__name__ for p in AVAILABLE_PROVIDERS],
-        'providers_en_cooldown': {k: round(PROVIDER_COOLDOWN_SECONDS - (time.time() - v), 1)
+        'providers_en_cooldown': {k: round(provider_cooldown_custom.get(k, PROVIDER_COOLDOWN_SECONDS) - (time.time() - v), 1)
                                    for k, v in provider_ultimo_fallo.items()
                                    if provider_en_cooldown(k)},
+        'g4f_api_key_configurada': bool(g4f_keys_state.get('current_key')),
         'proxy_rotation_enabled': PROXY_ROTATION_ENABLED,
         'proxy_count': len(PROXY_LIST),
         'plan_mode': model_activation_state['plan_mode'],
