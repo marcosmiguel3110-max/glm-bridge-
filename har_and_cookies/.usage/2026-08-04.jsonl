@@ -1,0 +1,5 @@
+{"user": null, "model": "z-ai/glm-5.2", "provider": "Nvidia", "label": "Nvidia", "prompt_tokens": 232, "completion_tokens": 46, "total_tokens": 278}
+{"user": null, "model": "z-ai/glm-5.2", "provider": "Nvidia", "label": "Nvidia", "prompt_tokens": 232, "completion_tokens": 46, "total_tokens": 278}
+{"user": null, "model": "north-mini-code-free", "provider": "WeWordle", "label": "WeWordle", "completion_tokens": 29, "prompt_tokens": 212, "total_tokens": 241}
+{"user": null, "model": "moonshotai/Kimi-K2.7-Code", "provider": "WeWordle", "label": "WeWordle", "completion_tokens": 24, "prompt_tokens": 212, "total_tokens": 236}
+{"user": null, "model": "deepseek-ai/DeepSeek-V4-Pro", "provider": "WeWordle", "label": "WeWordle", "completion_tokens": 27, "prompt_tokens": 212, "total_tokens": 239}

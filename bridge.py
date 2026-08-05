@@ -6,6 +6,7 @@ Con rotación de IPs vía proxies gratuitos y rotación de keys de G4F
 
 import os
 import re
+import time
 import logging
 import random
 from flask import Flask, request, jsonify
@@ -15,6 +16,15 @@ from g4f_key_manager import G4FKeyManager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
+
+# ============================================================
+# MARCADOR DE BUILD (para confirmar que Render corre este código)
+# ============================================================
+# Cambiá esta fecha/hash cada vez que subas un cambio importante y
+# comparala contra lo que aparece en /health para saber si el deploy
+# realmente se aplicó.
+BUILD_VERSION = "2026-08-05-fix-hosted-g4f-space-v2"
+RENDER_COMMIT = os.environ.get('RENDER_GIT_COMMIT', 'desconocido')
 
 app = Flask(__name__)
 CORS(app)
@@ -57,6 +67,29 @@ model_activation_state = {
 }
 
 log.info(f"[Activación] Sistema de activación secuencial inicializado. Modo planificación: {model_activation_state['plan_mode']}")
+log.info(f"[Build] Version: {BUILD_VERSION} | Render commit: {RENDER_COMMIT}")
+
+# ============================================================
+# INFRAESTRUCTURA HOSTEADA DE G4F (g4f.space / g4f.dev)
+# ============================================================
+# El equipo de g4f mantiene su propia API pública y centralizada en
+# https://g4f.space (documentada en https://g4f.dev/docs/providers-and-models.html).
+# Es EL MISMO backend que usa el playground https://g4f.dev/chat — por eso
+# ahí las cosas andan y desde nuestro propio scraping en Render no siempre.
+# Ventaja: la IP/routing la mantienen ellos, no nosotros.
+#
+# Custom server confirmado por el usuario (visible en la URL del playground:
+# https://g4f.dev/chat/#custom:srv_mrgy4bjz6a85b485d663), etiquetado ahí
+# como "opencode.ai/go", sirviendo (entre otros) los modelos "gpt-5.6-luna"
+# y "kimi-k3".
+OPENCODE_GO_SERVER_ID = os.environ.get('G4F_OPENCODE_GO_SRV', 'srv_mrgy4bjz6a85b485d663')
+
+# "community-day-2026" es un "live provider" temporal que g4f.dev habilitó
+# para su evento del 10 de julio de 2026 (ver https://g4f.dev/community-day-2026.html).
+# Al ser temporal/ligado a un evento, puede desaparecer del registro de
+# g4f.dev en cualquier momento — por eso SIEMPRE va envuelto en try/except
+# y nunca es el único camino disponible.
+COMMUNITY_DAY_LIVE_PROVIDER = os.environ.get('G4F_COMMUNITY_DAY_PROVIDER', 'community-day-2026')
 
 # Debug: Listar todos los providers disponibles en g4f.Provider
 log.info("[Debug] Providers disponibles en g4f.Provider:")
@@ -164,35 +197,39 @@ PROXY_ROTATION_ENABLED = len(PROXY_LIST) > 0
 
 log.info(f"[Proxies] Rotación de IPs: {'habilitada' if PROXY_ROTATION_ENABLED else 'deshabilitada'} | {len(PROXY_LIST)} proxies disponibles")
 
-# Modelo por defecto (usar z-ai/glm-5.2 desde Nvidia)
-DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'z-ai/glm-5.2')
+# Modelo por defecto (modelo real confirmado, servido por el provider GLM)
+DEFAULT_MODEL = os.environ.get('G4F_MODEL_OVERRIDE', 'GLM-4.7')
 DEFAULT_PROVIDER = os.environ.get('G4F_PROVIDER', '')
 
 # ============================================================
 # CONFIGURACIÓN PROVIDERS RECOMENDADOS (100% GRATUITOS, SIN AUTH)
 # ============================================================
-# Providers que funcionan sin autenticación según g4f-working (2024)
-# AnyProvider ELIMINADO: Bloqueado por límite de 3 días (Error 429)
-# Qwen: Modelos Qwen 3.5/3.6/3.7 (excelente para código) - REQUIERE ROTACIÓN DE IPs
-# WeWordle: GPT-4, GPT-4o, DeepSeek, DeepSeek-R1
-# Pollinations: Modelos OpenAI y Sana
-# Yqcloud: GPT-4
-# HuggingSpace eliminado: Bug interno con modelos desconocidos (NoneType error)
-# nvidia.com: z-ai/glm-5.2 (especialista en código)
-# OpenCode Zen: north-mini-code-free (código gratuito)
-# community-day-2026: moonshotai/Kimi-K2.7-Code, deepseek-ai/DeepSeek-V4-Pro
-# SurfSense: gpt-5.4-mini-no-login
+# IMPORTANTE: 'OpenCodeZen', 'CommunityDay', 'SurfSense'/'Surfsense' y 'Blackbox'
+# NO EXISTEN como providers en g4f (verificado contra el paquete instalado:
+# solo hay 92 providers reales, ninguno con esos nombres). Usarlos hacía que
+# la cascada cayera SIEMPRE al fallback general, desperdiciando tiempo y
+# reintentos. Lista corregida con providers que sí existen y están 'working':
+#   GLM       -> modelo real: GLM-4.7      (chat.z.ai)
+#   Nvidia    -> modelo real: openai/gpt-oss-120b (build.nvidia.com) — puede
+#                devolver 403 al listar modelos si Nvidia bloqueó el scraper
+#   DeepInfra -> modelo real: zai-org/GLM-5.2 (deepinfra.com)
+#   Pollinations / OpenRouterFree / Qwen / WeWordle / Yqcloud como respaldo
+#   general adicional (gratuitos, sin auth, existen en el paquete actual)
 RECOMMENDED_PROVIDERS = [
-    'Nvidia',  # Para z-ai/glm-5.2
-    'OpenCodeZen',  # Para north-mini-code-free
-    'CommunityDay',  # Para Kimi-K2.7-Code y DeepSeek-V4-Pro
-    'SurfSense',  # Para gpt-5.4-mini-no-login
+    'GLM',
+    'DeepInfra',
+    'Nvidia',
+    'Pollinations',
+    'OpenRouterFree',
+    'Qwen',
+    'WeWordle',
+    'Yqcloud',
 ]
 
-# Providers específicos para Claude (si están disponibles)
-CLAUDE_PROVIDERS = [
-    'Blackbox',    # Claude y modelos de código/diseño muy estables
-]
+# Providers específicos para Claude (si están disponibles).
+# 'Blackbox' no existe en el paquete actual — se deja vacío a propósito.
+# Si en el futuro agregás un provider real de Claude, ponelo acá.
+CLAUDE_PROVIDERS = []
 
 # ============================================================
 # CONFIGURACIÓN DE ROTACIÓN DE IPs PARA QWEN
@@ -249,6 +286,27 @@ for provider_name in IGNORED_PROVIDERS:
 
 log.info(f"[Providers] Total providers activos: {len(AVAILABLE_PROVIDERS)} | Claude: {len(AVAILABLE_CLAUDE_PROVIDERS)} | Ignorados: {len(IGNORED_PROVIDER_CLASSES)}")
 
+# Timeout por intento. 120s estaba multiplicando el tiempo total de espera
+# por cada combinación modelo/provider/proxy que fallaba (varios minutos
+# antes de responder el 502). Bajado a un valor configurable, razonable
+# para providers reales que responden rápido cuando funcionan.
+REQUEST_TIMEOUT_SECONDS = int(os.environ.get('G4F_REQUEST_TIMEOUT', '25'))
+# Presupuesto total de tiempo por request HTTP entrante, para no dejar
+# esperando al cliente varios minutos mientras la cascada prueba todo.
+TOTAL_REQUEST_BUDGET_SECONDS = int(os.environ.get('G4F_TOTAL_BUDGET', '55'))
+# Circuit breaker: si un provider falla, no se reintenta durante este tiempo.
+PROVIDER_COOLDOWN_SECONDS = int(os.environ.get('G4F_PROVIDER_COOLDOWN', '180'))
+provider_ultimo_fallo = {}  # nombre_provider -> timestamp del último fallo
+
+def provider_en_cooldown(provider_name):
+    ts = provider_ultimo_fallo.get(provider_name)
+    if ts is None:
+        return False
+    return (time.time() - ts) < PROVIDER_COOLDOWN_SECONDS
+
+def marcar_provider_fallido(provider_name):
+    provider_ultimo_fallo[provider_name] = time.time()
+
 g4f_client = None
 try:
     from g4f.client import Client
@@ -262,9 +320,8 @@ try:
             'https': PROXY_LIST[0]
         }
         log.info(f"[Proxies] Client g4f configurado con proxy por defecto")
-    
-    # Configurar timeout de 120s para dar tiempo a providers específicos (Nvidia, OpenCodeZen, CommunityDay)
-    client_kwargs['timeout'] = 120
+
+    client_kwargs['timeout'] = REQUEST_TIMEOUT_SECONDS
     
     g4f_client = Client(**client_kwargs)
     
@@ -454,6 +511,52 @@ def esPedidoVisual(messages):
     
     return False
 
+def _extraer_contenido_respuesta(response):
+    """Extrae el texto de una respuesta de g4f, ya sea streaming o no."""
+    content = ''
+    try:
+        for chunk in response:
+            if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
+                delta = chunk.choices[0].delta
+                if hasattr(delta, 'content') and delta.content:
+                    content += delta.content
+    except TypeError:
+        # No es iterable -> no fue streaming, es una respuesta completa
+        if hasattr(response, 'choices') and len(response.choices) > 0:
+            content = response.choices[0].message.content or ''
+    return content
+
+
+def intentar_g4f_space_hosted(nombre_live_provider, modelo, messages_reforzados,
+                               temperature, max_tokens, timeout_s):
+    """
+    Intenta resolver el request contra la infraestructura hosteada de g4f
+    (g4f.space), ya sea un 'live provider' (ej: 'default', 'community-day-2026')
+    o un 'custom server' (ej: 'custom:srv_XXXX'). Esto reutiliza el mismo
+    backend centralizado que usa https://g4f.dev/chat, en vez de scrapear
+    providers directamente desde nuestra propia IP de Render.
+
+    Devuelve (contenido, etiqueta_usada) o lanza una excepción si falla.
+    """
+    from g4f.client import ClientFactory
+
+    if provider_en_cooldown(f"hosted:{nombre_live_provider}"):
+        raise RuntimeError(f'{nombre_live_provider}: en cooldown (falló hace poco)')
+
+    client = ClientFactory.create_client(nombre_live_provider, timeout=timeout_s)
+    response = client.chat.completions.create(
+        model=modelo,
+        messages=messages_reforzados,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        stream=True,
+    )
+    content = _extraer_contenido_respuesta(response)
+    if not content or not content.strip():
+        raise RuntimeError(f'{nombre_live_provider}/{modelo}: respuesta vacia')
+    return content
+
+
 def llamar_g4f(messages, model, temperature, max_tokens):
     if not g4f_client:
         raise RuntimeError('g4f no esta disponible')
@@ -489,46 +592,86 @@ def llamar_g4f(messages, model, temperature, max_tokens):
         else:
             log.info(f"[Activación] Modelo {modelo_a_usar} es el modelo actual en el plan. Permitiendo ejecución.")
 
-    # Detectar tipo de request para seleccionar cascada apropiada
+    # Detectar tipo de request (se mantiene por compatibilidad/logging, ya
+    # no se usa para elegir una cascada distinta: los providers reales
+    # disponibles son los mismos para chat normal o para pedidos visuales,
+    # así que se prueban en el mismo orden de calidad/estabilidad conocida).
     tipo_request = detectar_tipo_request(messages)
     es_visual = esPedidoVisual(messages)
     log.info(f"[Cascada] Tipo de request detectado: {tipo_request} | Visual: {es_visual}")
-    
-    # CASCADA DE MODELOS SEGÚN TIPO DE REQUEST
-    if es_visual:
-        # CASCADA MODELOS OPENROUTER CANVAS (para pedidos visuales/canvas/juegos/Modo Design)
-        # Solo modelos con providers específicos
-        modelos_disponibles = [
-            modelo_a_usar,
-            # Modelos con providers específicos
-            'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
-            'north-mini-code-free',  # Código gratuito desde OpenCode Zen
-            'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
-            'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
-            'gpt-5.4-mini-no-login',  # Desde SurfSense
-        ]
-    elif tipo_request == 'design':
-        # Cascada para diseño/canvas/juegos (solo modelos con providers específicos)
-        modelos_disponibles = [
-            modelo_a_usar,
-            # Modelos con providers específicos
-            'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
-            'north-mini-code-free',  # Código gratuito desde OpenCode Zen
-            'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
-            'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
-            'gpt-5.4-mini-no-login',  # Desde SurfSense
-        ]
-    else:
-        # CASCADA GENERAL (solo modelos con providers específicos)
-        modelos_disponibles = [
-            modelo_a_usar,
-            # Modelos con providers específicos
-            'z-ai/glm-5.2',  # Especialista en programación desde Nvidia
-            'north-mini-code-free',  # Código gratuito desde OpenCode Zen
-            'moonshotai/Kimi-K2.7-Code',  # Código desde Community Day
-            'deepseek-ai/DeepSeek-V4-Pro',  # Desde Community Day
-            'gpt-5.4-mini-no-login',  # Desde SurfSense
-        ]
+
+    tiempo_inicio_cascada = time.time()
+
+    # ========================================================
+    # PASO 0: Infraestructura hosteada de g4f.space (PRIMERA opción)
+    # ========================================================
+    # Esto reutiliza el mismo backend que https://g4f.dev/chat, mantenido
+    # por el equipo de g4f. Es más confiable que scrapear providers desde
+    # nuestra propia IP de Render porque ellos gestionan el routing/IPs.
+    modelo_lower_pedido = modelo_a_usar.lower()
+
+    # Mapeo específico solicitado: reemplaza DeepSeek-V4-Pro y
+    # Kimi-K2.7-Code por el custom server real "opencode.ai/go".
+    intentos_hosted = []
+    if 'kimi-k2.7-code' in modelo_lower_pedido or 'kimi-k3' in modelo_lower_pedido or 'moonshotai' in modelo_lower_pedido:
+        intentos_hosted.append((f'custom:{OPENCODE_GO_SERVER_ID}', 'kimi-k3'))
+    if 'deepseek-v4-pro' in modelo_lower_pedido or 'deepseek-ai' in modelo_lower_pedido or 'gpt-5.6-luna' in modelo_lower_pedido:
+        intentos_hosted.append((f'custom:{OPENCODE_GO_SERVER_ID}', 'gpt-5.6-luna'))
+    if 'glm' in modelo_lower_pedido:
+        # 'community-day-2026' es temporal (evento del 10 de julio 2026);
+        # si ya no existe en el registro de g4f.dev, esto falla rápido y
+        # sigue de largo sin romper nada.
+        intentos_hosted.append((COMMUNITY_DAY_LIVE_PROVIDER, 'zai-org/GLM-5.2'))
+
+    # Si el modelo pedido no matcheó nada específico, probamos igual el
+    # routing automático 'default' de g4f.space (deja que ellos elijan
+    # el mejor modelo disponible en ese momento).
+    intentos_hosted.append(('default', 'auto'))
+
+    for nombre_live_provider, modelo_hosted in intentos_hosted:
+        if (time.time() - tiempo_inicio_cascada) > TOTAL_REQUEST_BUDGET_SECONDS:
+            log.warning(f"[Hosted] Presupuesto de tiempo agotado antes de terminar de probar g4f.space")
+            break
+        try:
+            log.info(f"[Hosted] Probando g4f.space | provider: {nombre_live_provider} | modelo: {modelo_hosted}")
+            content = intentar_g4f_space_hosted(
+                nombre_live_provider, modelo_hosted, messages_reforzados,
+                temperature, max_tokens, REQUEST_TIMEOUT_SECONDS
+            )
+            content = strip_think_tags(content)
+            content = limpiar_identidad_respuesta(content)
+            log.info(f"[Hosted] OK | provider: {nombre_live_provider} | modelo: {modelo_hosted} | {len(content)} chars")
+            return content, f'{nombre_live_provider}:{modelo_hosted}'
+        except Exception as e:
+            log.warning(f"[Hosted] Fallo {nombre_live_provider}/{modelo_hosted}: {e}")
+            marcar_provider_fallido(f"hosted:{nombre_live_provider}")
+            continue
+
+    log.warning("[Hosted] g4f.space no respondió con ningún modelo, cayendo al cascada local de providers")
+
+    # MAPEO MODELO -> (provider, modelo_real_del_provider)
+    # Cada entrada usa el nombre de modelo REAL que ese provider espera
+    # (confirmado contra el paquete g4f instalado). Si el modelo pedido por
+    # el usuario no matchea ninguno de estos, se cae al fallback general.
+    # El orden importa: las entradas más específicas van primero para que
+    # no las tape una coincidencia genérica (p.ej. 'zai-org' antes que 'glm').
+    MAPEO_MODELO_PROVIDER = [
+        ('zai-org', 'DeepInfra', 'zai-org/GLM-5.2'),
+        ('gpt-oss', 'Nvidia', 'openai/gpt-oss-120b'),
+        ('glm-5.2', 'GLM', 'GLM-4.7'),
+        ('glm-4', 'GLM', 'GLM-4.7'),
+        ('glm', 'DeepInfra', 'zai-org/GLM-5.2'),
+    ]
+
+    # Cascada de modelos a intentar, en orden. El primero es lo que pidió
+    # el usuario (se intenta mapear a un provider real); el resto son
+    # modelos reales conocidos como respaldo.
+    modelos_disponibles = [
+        modelo_a_usar,
+        'GLM-4.7',              # GLM directo
+        'zai-org/GLM-5.2',      # Mismo modelo vía DeepInfra
+        'openai/gpt-oss-120b',  # Nvidia
+    ]
 
     vistos = set()
     modelos_a_probar = []
@@ -541,54 +684,52 @@ def llamar_g4f(messages, model, temperature, max_tokens):
     if provider_desde_modelo:
         providers_a_probar = [provider_desde_modelo]
     else:
-        # Usar lista de providers recomendados (solo providers específicos)
+        # Usar lista de providers recomendados (solo los que existen de verdad)
         providers_a_probar = AVAILABLE_PROVIDERS
 
+    tiempo_inicio_cascada_local = time.time()
     ultimo_error = None
     for modelo_actual in modelos_a_probar:
-        # Determinar providers específicos para este modelo
+        # Respetar el presupuesto total de tiempo de este request (cuenta
+        # desde el arranque de llamar_g4f, no solo desde acá, para no
+        # exceder TOTAL_REQUEST_BUDGET_SECONDS sumando hosted + local)
+        if (time.time() - tiempo_inicio_cascada) > TOTAL_REQUEST_BUDGET_SECONDS:
+            log.warning(f"[Cascada] Presupuesto total de tiempo ({TOTAL_REQUEST_BUDGET_SECONDS}s) agotado, abortando cascada")
+            break
+
+        # Determinar pares (provider, modelo_real) a intentar para este modelo pedido
         modelo_lower = modelo_actual.lower()
-        providers_para_modelo = []
-        
-        if 'z-ai/glm-5.2' in modelo_lower or 'glm-5.2' in modelo_lower:
-            if hasattr(g4f.Provider, 'GLM'):
-                providers_para_modelo = [g4f.Provider.GLM]
-                log.info(f"[Cascada] Modelo {modelo_actual} usando provider GLM")
-            else:
-                log.warning(f"[Cascada] Provider GLM no disponible en g4f.Provider")
-        elif 'north-mini-code-free' in modelo_lower:
-            if hasattr(g4f.Provider, 'OpenCode'):
-                providers_para_modelo = [g4f.Provider.OpenCode]
-                log.info(f"[Cascada] Modelo {modelo_actual} usando provider OpenCode")
-            else:
-                log.warning(f"[Cascada] Provider OpenCode no disponible en g4f.Provider")
-        elif 'kimi-k2.7-code' in modelo_lower or 'moonshotai' in modelo_lower:
-            if hasattr(g4f.Provider, 'DeepInfra'):
-                providers_para_modelo = [g4f.Provider.DeepInfra]
-                log.info(f"[Cascada] Modelo {modelo_actual} usando provider DeepInfra")
-            else:
-                log.warning(f"[Cascada] Provider DeepInfra no disponible en g4f.Provider")
-        elif 'deepseek-v4-pro' in modelo_lower or 'deepseek-ai' in modelo_lower:
-            if hasattr(g4f.Provider, 'DeepInfra'):
-                providers_para_modelo = [g4f.Provider.DeepInfra]
-                log.info(f"[Cascada] Modelo {modelo_actual} usando provider DeepInfra")
-            else:
-                log.warning(f"[Cascada] Provider DeepInfra no disponible en g4f.Provider")
-        elif 'gpt-5.4-mini-no-login' in modelo_lower or 'gpt-5.4' in modelo_lower:
-            if hasattr(g4f.Provider, 'Surfsense'):
-                providers_para_modelo = [g4f.Provider.Surfsense]
-                log.info(f"[Cascada] Modelo {modelo_actual} usando provider Surfsense")
-            else:
-                log.warning(f"[Cascada] Provider Surfsense no disponible en g4f.Provider")
-        
-        # Si no hay provider específico, usar providers generales (fallback)
-        if not providers_para_modelo:
-            log.warning(f"[Cascada] Modelo {modelo_actual} no tiene provider específico, usando providers generales")
-            providers_para_modelo = providers_a_probar
-        
-        for provider_actual in providers_para_modelo:
+        pares_provider_modelo = []  # lista de (provider_class, modelo_real_str)
+
+        for substring, provider_name, modelo_real_provider in MAPEO_MODELO_PROVIDER:
+            if substring in modelo_lower:
+                if not hasattr(g4f.Provider, provider_name):
+                    log.warning(f"[Cascada] Provider {provider_name} no disponible en g4f.Provider (versión instalada)")
+                    continue
+                if provider_en_cooldown(provider_name):
+                    log.info(f"[Cascada] Provider {provider_name} en cooldown (falló hace poco), saltando")
+                    continue
+                pares_provider_modelo = [(getattr(g4f.Provider, provider_name), modelo_real_provider)]
+                log.info(f"[Cascada] Modelo {modelo_actual} -> provider {provider_name} (modelo real: {modelo_real_provider})")
+                break
+
+        # Si no hay provider específico (o está en cooldown), usar providers generales.
+        # A cada provider general se le pasa SU PROPIO modelo por defecto (default_model),
+        # no el string pedido por el usuario, porque cada provider solo entiende sus
+        # propios nombres de modelo.
+        if not pares_provider_modelo:
+            log.warning(f"[Cascada] Modelo {modelo_actual} sin provider específico disponible, usando providers generales")
+            for p in providers_a_probar:
+                nombre_p = getattr(p, '__name__', str(p))
+                if provider_en_cooldown(nombre_p):
+                    continue
+                modelo_del_provider = getattr(p, 'default_model', None) or modelo_actual
+                pares_provider_modelo.append((p, modelo_del_provider))
+
+        for provider_actual, modelo_real in pares_provider_modelo:
+            modelo_actual_intento = modelo_real
             # Detectar si es modelo Qwen para forzar rotación de IPs
-            es_qwen = 'qwen' in modelo_actual.lower() or (hasattr(provider_actual, '__name__') and 'qwen' in provider_actual.__name__.lower())
+            es_qwen = 'qwen' in modelo_actual_intento.lower() or (hasattr(provider_actual, '__name__') and 'qwen' in provider_actual.__name__.lower())
             
             # Para Qwen: FORZAR proxy primero (rate limiting por IP)
             # Para otros: NO usar proxy por defecto (muchos caídos, causan timeout de 30s)
@@ -600,16 +741,20 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                 proxy_order = [False]
             
             for usar_proxy in proxy_order:
+                # Respetar presupuesto total también entre proveedores/proxies
+                if (time.time() - tiempo_inicio_cascada) > TOTAL_REQUEST_BUDGET_SECONDS:
+                    log.warning(f"[Cascada] Presupuesto total de tiempo ({TOTAL_REQUEST_BUDGET_SECONDS}s) agotado, abortando cascada")
+                    raise RuntimeError(f'Todos los modelos/providers fallaron. Ultimo error: {ultimo_error} (presupuesto de tiempo agotado)')
                 try:
                     provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
                     
                     # Usar proxy rotativo si está habilitado y es el primer intento
                     proxy_config = obtener_proxy_rotativo() if (usar_proxy and PROXY_ROTATION_ENABLED) else None
                     
-                    log.info(f'Intentando modelo: {modelo_actual} | provider: {provider_name} | proxy: {"si" if proxy_config else "no"}')
+                    log.info(f'Intentando modelo: {modelo_actual_intento} | provider: {provider_name} | proxy: {"si" if proxy_config else "no"}')
                     
                     kwargs = {
-                        'model': modelo_actual,
+                        'model': modelo_actual_intento,
                         'messages': messages_reforzados,
                         'temperature': temperature,
                         'max_tokens': max_tokens,
@@ -639,26 +784,26 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                     if content and content.strip():
                         content = strip_think_tags(content)
                         content = limpiar_identidad_respuesta(content)
-                        log.info(f'OK | modelo: {modelo_actual} | provider: {provider_name} | proxy: {"si" if proxy_config else "no"} | {len(content)} chars')
+                        log.info(f'OK | modelo: {modelo_actual_intento} | provider: {provider_name} | proxy: {"si" if proxy_config else "no"} | {len(content)} chars')
                         
                         # ACTIVACIÓN SECUENCIAL: Si el modelo actual terminó exitosamente, pasar al siguiente
                         if model_activation_state['plan_complete'] and model_activation_state['plan_models']:
                             if model_activation_state['current_model_index'] < len(model_activation_state['plan_models']) - 1:
                                 model_activation_state['current_model_index'] += 1
                                 next_model = model_activation_state['plan_models'][model_activation_state['current_model_index']]
-                                log.info(f"[Activación] Modelo {modelo_actual} completado. Pasando al siguiente modelo: {next_model} (índice {model_activation_state['current_model_index']})")
+                                log.info(f"[Activación] Modelo {modelo_actual_intento} completado. Pasando al siguiente modelo: {next_model} (índice {model_activation_state['current_model_index']})")
                             else:
-                                log.info(f"[Activación] Modelo {modelo_actual} completado. No hay más modelos en el plan. Plan finalizado.")
+                                log.info(f"[Activación] Modelo {modelo_actual_intento} completado. No hay más modelos en el plan. Plan finalizado.")
                                 model_activation_state['plan_complete'] = False
                         
-                        return content, modelo_actual
+                        return content, modelo_actual_intento
                     else:
-                        ultimo_error = f'{modelo_actual}/{provider_name}: respuesta vacia'
+                        ultimo_error = f'{modelo_actual_intento}/{provider_name}: respuesta vacia'
                         log.warning(ultimo_error)
                         break  # Si respuesta vacía, no reintentar sin proxy
                 except Exception as e:
                     provider_name = provider_actual.__name__ if hasattr(provider_actual, '__name__') else (provider_actual or 'auto')
-                    error_msg = f'{modelo_actual}/{provider_name}: {e}'
+                    error_msg = f'{modelo_actual_intento}/{provider_name}: {e}'
                     
                     # Detectar errores de key expirada o sin tokens
                     error_str = str(e).lower()
@@ -688,7 +833,8 @@ def llamar_g4f(messages, model, temperature, max_tokens):
                         continue  # Reintentar sin proxy
                     else:
                         ultimo_error = error_msg
-                        log.warning(f'Fallo modelo {modelo_actual} provider {provider_name}: {e}')
+                        log.warning(f'Fallo modelo {modelo_actual_intento} provider {provider_name}: {e}')
+                        marcar_provider_fallido(provider_name)  # circuit breaker: enfriar este provider
                         break  # Pasar al siguiente modelo/provider
 
     raise RuntimeError(f'Todos los modelos/providers fallaron. Ultimo error: {ultimo_error}')
@@ -752,14 +898,10 @@ def chat_completions():
 @app.route('/v1/models', methods=['GET'])
 def list_models():
     modelos = [
-        # Modelos especializados en canvas/visuales (OpenRouter Canvas)
-        "qwen/qwen3.6-27b",
-        # Modelos con providers específicos
-        "z-ai/glm-5.2",  # Desde Nvidia
-        "north-mini-code-free",  # Desde OpenCode Zen
-        "moonshotai/Kimi-K2.7-Code",  # Desde Community Day
-        "deepseek-ai/DeepSeek-V4-Pro",  # Desde Community Day
-        "gpt-5.4-mini-no-login"  # Desde SurfSense
+        # Modelos reales confirmados contra el paquete g4f instalado
+        "GLM-4.7",              # Desde provider GLM (chat.z.ai)
+        "zai-org/GLM-5.2",      # Desde provider DeepInfra (deepinfra.com)
+        "openai/gpt-oss-120b",  # Desde provider Nvidia (build.nvidia.com)
     ]
     data = [{"id": m, "object": "model", "owned_by": "g4f-bridge"} for m in modelos]
     return jsonify({"object": "list", "data": data})
@@ -844,9 +986,17 @@ def health():
         'status': 'ok',
         'service': 'glm-bridge',
         'mode': 'g4f-free',
+        'build_version': BUILD_VERSION,
+        'render_commit': RENDER_COMMIT,
         'model_default': DEFAULT_MODEL,
         'provider': DEFAULT_PROVIDER or 'auto',
         'g4f_available': g4f_client is not None,
+        'request_timeout_seconds': REQUEST_TIMEOUT_SECONDS,
+        'total_request_budget_seconds': TOTAL_REQUEST_BUDGET_SECONDS,
+        'providers_activos': [p.__name__ for p in AVAILABLE_PROVIDERS],
+        'providers_en_cooldown': {k: round(PROVIDER_COOLDOWN_SECONDS - (time.time() - v), 1)
+                                   for k, v in provider_ultimo_fallo.items()
+                                   if provider_en_cooldown(k)},
         'proxy_rotation_enabled': PROXY_ROTATION_ENABLED,
         'proxy_count': len(PROXY_LIST),
         'plan_mode': model_activation_state['plan_mode'],
