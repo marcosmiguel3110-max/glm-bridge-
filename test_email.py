@@ -34,7 +34,7 @@ def main():
     resultado = manager.enviar_alerta_email(keys_por_expirar)
     
     if resultado:
-        print("\n✓ Email enviado exitosamente a marcos.miguel.3110@gmail.com")
+        print("\n✓ Email enviado exitosamente")
         print("  Revisa tu bandeja de entrada para verificar")
     else:
         print("\n✗ Error enviando email")
